@@ -1,0 +1,20 @@
+[project]
+name = "end-to-end-sales-forecasting"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "apache-airflow==3.0.4",
+    "graphviz>=0.21",
+    "pandas>=2.3.2",
+    "polars>=1.32.3",
+    "pydantic-settings>=2.10.1",
+]
+
+[dependency-groups]
+dev = [
+    "jupyter>=1.1.1",
+    "nb-black-formatter>=1.0.1",
+    "ruff>=0.12.10",
+]

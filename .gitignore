@@ -208,3 +208,12 @@ __marimo__/
 
 # Custom ignore patterns
 **/**/note.*
+
+# Airflow - ignore generated files but keep DAGs
+**/airflow/logs/
+**/airflow/airflow.db*
+**/airflow/simple_auth_manager_passwords.json.generated
+**/airflow/*.log
+**/airflow/airflow.cfg
+!**/airflow/dags/
+
