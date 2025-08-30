@@ -25,3 +25,7 @@ echo "To start Airflow UI, run:"
 echo "  airflow standalone"
 echo "Then visit: http://localhost:8080"
 echo ""
+
+echo "To view the DAGs folder, run:"
+echo "  airflow config get-value core dags_folder"
+echo ""
