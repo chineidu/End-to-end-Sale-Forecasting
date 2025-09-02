@@ -1,3 +1,7 @@
+"""This module provides utilities for feature engineering.
+Inspired by: https://github.com/airscholar/astro-salesforecast/blob/main/include/feature_engineering/feature_pipeline.py
+"""
+
 import holidays
 import numpy as np
 import polars as pl
