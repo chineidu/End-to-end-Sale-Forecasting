@@ -1,9 +1,10 @@
-import logging
 import os
 
 import httpx
 
-logger = logging.getLogger(__name__)
+from src import create_logger
+
+logger = create_logger("service_discovery")
 
 
 def get_mlflow_endpoint() -> str:

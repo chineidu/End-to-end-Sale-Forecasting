@@ -2,7 +2,6 @@
 Copied from: https://github.com/airscholar/astro-salesforecast/blob/main/include/utils/mlflow_s3_utils.py
 """
 
-import logging
 import os
 import shutil
 
@@ -10,10 +9,11 @@ import boto3
 import mlflow
 from botocore.client import Config
 
+from src import create_logger
 from src.config import app_settings
 from src.utilities.service_discovery import get_minio_endpoint
 
-logger = logging.getLogger(__name__)
+logger = create_logger("mlflow_s3_utils")
 
 
 class MLflowS3Manager:

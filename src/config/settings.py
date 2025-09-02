@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: SecretStr = SecretStr("minioadmin")
     AWS_DEFAULT_REGION: str = "us-east-1"
 
-    @field_validator("MLFLOW_PORT", "S3_PORT", mode="before")
+    @field_validator("MLFLOW_PORT", "AWS_S3_PORT", mode="before")
     @classmethod
     def parse_port_fields(cls, v: str | int) -> int:
         """Parses port fields to ensure they are integers."""

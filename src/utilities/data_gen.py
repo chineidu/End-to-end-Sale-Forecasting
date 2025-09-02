@@ -2,7 +2,6 @@
 Copied from: https://github.com/airscholar/astro-salesforecast/blob/main/include/utils/data_generator.py
 """
 
-import logging
 import os
 import random
 from datetime import datetime, timedelta
@@ -11,7 +10,9 @@ import holidays
 import numpy as np
 import pandas as pd
 
-logger = logging.getLogger(__name__)
+from src import create_logger
+
+logger = create_logger("data_generation")
 
 
 class RealisticSalesDataGenerator:

@@ -9,8 +9,10 @@ import polars.selectors as cs
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import LabelEncoder
 
+from src import create_logger
 from src.config import app_config
 
+logger = create_logger("feature_engineering")
 
 class FeatureEngineer:
     def __init__(self) -> None:
@@ -45,7 +47,7 @@ class FeatureEngineer:
         try:
             df = df.with_columns(pl.col("date").cast(pl.Date).alias("date"))
         except Exception as e:
-            print(f"Error converting {date_col} to datetime: {e}")
+            logger.error(f"Error converting {date_col} to datetime: {e}")
             pass
 
         if "date" in date_features:
@@ -90,7 +92,7 @@ class FeatureEngineer:
             for lag in lag_values:
                 df = df.with_columns(pl.col(target_col).shift(lag).alias(f"{target_col}_lag_{lag}"))
 
-        print(f"Created {len(lag_values)} lag features")
+        logger.info(f"Created {len(lag_values)} lag features")
         return df
 
     def create_rolling_features(
@@ -114,8 +116,8 @@ class FeatureEngineer:
             Dataframe with the created rolling features.
         """
         df = df.clone()
-        windows = self.feature_config.rolling_features["windows"]
-        functions = self.feature_config.rolling_features["functions"]
+        windows: list[int | str] = self.feature_config.rolling_features["windows"]
+        functions: list[int | str] = self.feature_config.rolling_features["functions"]
 
         if group_cols:
             for window in windows:
@@ -279,7 +281,7 @@ class FeatureEngineer:
         pl.DataFrame
             DataFrame with created features.
         """
-        print("Starting feature engineering pipeline")
+        logger.info("Starting feature engineering pipeline")
 
         if group_cols:
             df = df.sort(by=group_cols + [date_col])
@@ -305,7 +307,7 @@ class FeatureEngineer:
         # Handle missing values
         df = self.handle_missing_values(df)
 
-        print(f"Feature engineering pipeline completed. {len(df.columns)!r} total features.")
+        logger.info(f"Feature engineering pipeline completed. {len(df.columns)!r} total features.")
 
         return df
 
@@ -350,7 +352,7 @@ class FeatureEngineer:
         )
         # Select features based on importance
         selected_features: list[str] = importances.filter(pl.col("importance") > importance_threshold)["feature"].to_list()
-        print(f"Selected features: {len(selected_features)} out of {len(X.columns)}")
+        logger.info(f"Selected features: {len(selected_features)} out of {len(X.columns)}")
 
         return selected_features
 
@@ -400,6 +402,6 @@ class FeatureEngineer:
                 .map_elements(lambda x: smooth_mean.get(x, global_mean))  # noqa: B023
                 .alias(f"{col_name}_target_encoded")
             )
-        print(f"Created target encoding for {len(categorical_cols)!r} categorical features")
+        logger.info(f"Created target encoding for {len(categorical_cols)!r} categorical features")
 
         return df

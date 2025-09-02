@@ -2,7 +2,6 @@
 inspired by: hhttps://github.com/airscholar/astro-salesforecast/blob/main/include/utils/mlflow_utils.py
 """
 
-import logging
 import os
 from datetime import datetime
 from typing import Any, Optional
@@ -15,10 +14,11 @@ import yaml  # type: ignore
 from mlflow.pyfunc import PyFuncModel
 from mlflow.tracking import MlflowClient  # type: ignore
 
+from src import create_logger
 from src.config import app_config, app_settings
 from src.utilities.service_discovery import get_mlflow_endpoint
 
-logger = logging.getLogger(__name__)
+logger = create_logger("mlflow_utils")
 
 
 class MLflowManager:
