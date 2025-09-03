@@ -11,7 +11,7 @@ from botocore.client import Config
 from src import create_logger
 from src.config import app_settings
 
-logger = create_logger("artifacts_verification")
+logger = create_logger(__name__)
 
 
 def verify_s3_artifacts(run_id: str, expected_artifacts: list[str] | None = None) -> dict[str, Any]:

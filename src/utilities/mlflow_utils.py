@@ -18,7 +18,7 @@ from src import create_logger
 from src.config import app_config, app_settings
 from src.utilities.service_discovery import get_mlflow_endpoint
 
-logger = create_logger("mlflow_utils")
+logger = create_logger(__name__)
 
 
 class MLflowManager:

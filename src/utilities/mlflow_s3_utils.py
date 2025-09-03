@@ -13,7 +13,7 @@ from src import create_logger
 from src.config import app_settings
 from src.utilities.service_discovery import get_minio_endpoint
 
-logger = create_logger("mlflow_s3_utils")
+logger = create_logger(__name__)
 
 
 class MLflowS3Manager:

@@ -12,7 +12,7 @@ import pandas as pd
 
 from src import create_logger
 
-logger = create_logger("data_generation")
+logger = create_logger(__name__)
 
 
 class RealisticSalesDataGenerator:

@@ -11,7 +11,7 @@ import polars.selectors as cs
 
 from src import create_logger
 
-logger = create_logger("diagnostics")
+logger = create_logger(__name__)
 
 
 def diagnose_model_performance(

@@ -4,7 +4,7 @@ import httpx
 
 from src import create_logger
 
-logger = create_logger("service_discovery")
+logger = create_logger(__name__)
 
 
 def get_mlflow_endpoint() -> str:

@@ -12,7 +12,7 @@ from sklearn.preprocessing import LabelEncoder
 from src import create_logger
 from src.config import app_config
 
-logger = create_logger("feature_engineering")
+logger = create_logger(__name__)
 
 class FeatureEngineer:
     def __init__(self) -> None:

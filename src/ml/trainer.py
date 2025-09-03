@@ -24,7 +24,7 @@ from src.ml.ensemble_model import EnsembleModel
 from src.utilities.feature_engineering import FeatureEngineer
 from src.utilities.mlflow_utils import MLflowManager
 
-logger = create_logger("trainer")
+logger = create_logger(__name__)
 
 
 class ModelTrainer:
