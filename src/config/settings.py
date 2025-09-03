@@ -116,7 +116,7 @@ class Settings(BaseSettings):
             Complete S3 endpoint URL in the format:
             http://host:port
         """
-        url: str = f"http://{self.S3_HOST}:{self.S3_PORT}"
+        url: str = f"http://{self.AWS_S3_HOST}:{self.AWS_S3_PORT}"
         return fix_url_credentials(url)
 
 

@@ -7,6 +7,8 @@ RUN pip install mlflow==3.3.2 psycopg2-binary boto3==1.40.21
 ENV MLFLOW_PORT=5001 \
     MLFLOW_HOST=0.0.0.0
 
+# Example: MLFLOW_DB_URI=postgresql://user:password@host:port/database
+
 EXPOSE 5001
 
 # Use bash to allow environment variable expansion

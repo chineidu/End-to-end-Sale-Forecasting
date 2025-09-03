@@ -76,7 +76,7 @@ services:
 
   # Create MLflow bucket in MinIO
   minio-mc:
-    image: minio/mc:RELEASE.2025-07-21T05-28-08Z
+    image: minio/mc:latest
     platform: linux/arm64
     env_file:
       - .env
