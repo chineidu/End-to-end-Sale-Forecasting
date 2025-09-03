@@ -69,7 +69,14 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: SecretStr = SecretStr("minioadmin")
     AWS_DEFAULT_REGION: str = "us-east-1"
 
-    @field_validator("MLFLOW_PORT", "AWS_S3_PORT", mode="before")
+    # ======= DB =======
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_USER: str = "mlflow"
+    POSTGRES_PASSWORD: SecretStr = SecretStr("mlflow")
+    POSTGRES_DB: str = "mlflow"
+
+    @field_validator("MLFLOW_PORT", "AWS_S3_PORT", "POSTGRES_PORT", mode="before")
     @classmethod
     def parse_port_fields(cls, v: str | int) -> int:
         """Parses port fields to ensure they are integers."""

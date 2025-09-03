@@ -1,4 +1,4 @@
-"""This module provides utilities for feature engineering.
+"""This module provides utilities for ensemble model.
 Copied from: https://github.com/airscholar/astro-salesforecast/blob/main/include/ml_models/ensemble_model.py
 """
 

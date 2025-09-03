@@ -1,5 +1,5 @@
 """This module provides utilities for managing MLflow artifacts in S3/MinIO.
-inspired by: hhttps://github.com/airscholar/astro-salesforecast/blob/main/include/utils/mlflow_utils.py
+Inspired by: https://github.com/airscholar/astro-salesforecast/blob/main/include/utils/mlflow_utils.py
 """
 
 import os
