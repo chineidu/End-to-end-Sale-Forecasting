@@ -9,8 +9,8 @@ import polars.selectors as cs
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import LabelEncoder
 
-from src import create_logger
-from src.config import app_config
+from include import create_logger
+from include.config import app_config
 
 logger = create_logger(__name__)
 

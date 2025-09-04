@@ -9,7 +9,7 @@ import numpy as np
 import polars as pl
 import polars.selectors as cs
 
-from src import create_logger
+from include import create_logger
 
 logger = create_logger(__name__)
 

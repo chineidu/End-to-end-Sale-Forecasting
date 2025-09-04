@@ -216,4 +216,4 @@ __marimo__/
 **/airflow/*.log
 **/airflow/airflow.cfg
 !**/airflow/dags/
-data/*
+**/**/data/*

@@ -9,9 +9,9 @@ import boto3
 import mlflow
 from botocore.client import Config
 
-from src import create_logger
-from src.config import app_settings
-from src.utilities.service_discovery import get_minio_endpoint
+from include import create_logger
+from include.config import app_settings
+from include.utilities.service_discovery import get_minio_endpoint
 
 logger = create_logger(__name__)
 

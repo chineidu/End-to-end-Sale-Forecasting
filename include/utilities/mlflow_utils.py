@@ -14,9 +14,9 @@ import yaml  # type: ignore
 from mlflow.pyfunc import PyFuncModel
 from mlflow.tracking import MlflowClient  # type: ignore
 
-from src import create_logger
-from src.config import app_config, app_settings
-from src.utilities.service_discovery import get_mlflow_endpoint
+from include import create_logger
+from include.config import app_config, app_settings
+from include.utilities.service_discovery import get_mlflow_endpoint
 
 logger = create_logger(__name__)
 
@@ -190,7 +190,7 @@ class MLflowManager:
         # Sync artifacts to S3 after run ends
         if run_id and status == "FINISHED":
             try:
-                from src.utilities.mlflow_s3_utils import MLflowS3Manager
+                from include.utilities.mlflow_s3_utils import MLflowS3Manager
 
                 s3_manager = MLflowS3Manager()
                 s3_manager.sync_mlflow_artifacts_to_s3(run_id)

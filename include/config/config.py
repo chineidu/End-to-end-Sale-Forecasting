@@ -4,8 +4,8 @@ from typing import Any
 from omegaconf import DictConfig, OmegaConf
 from pydantic import BaseModel, Field
 
-from src import PACKAGE_PATH
-from src.schemas.input_schema import Float
+from include import PACKAGE_PATH
+from include.schemas.input_schema import Float
 
 
 class MLFlowConfig(BaseModel):
@@ -79,7 +79,7 @@ class AppConfig(BaseModel):
     config: Config = Field(..., description="Application configuration")
 
 
-config_path: Path = PACKAGE_PATH / "src/config/config.yaml"
+config_path: Path = PACKAGE_PATH / "include/config/config.yaml"
 config: DictConfig = OmegaConf.load(config_path).config
 # Resolve all the variables
 resolved_cfg = OmegaConf.to_container(config, resolve=True)

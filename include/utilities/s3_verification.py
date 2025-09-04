@@ -8,8 +8,8 @@ import boto3
 import mlflow
 from botocore.client import Config
 
-from src import create_logger
-from src.config import app_settings
+from include import create_logger
+from include.config import app_settings
 
 logger = create_logger(__name__)
 

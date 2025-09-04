@@ -1,5 +1,5 @@
 """This module provides visualization utilities for comparing machine learning model performance.
-Inspired by: https://github.com/airscholar/astro-salesforecast/blob/main/include/ml_models/model_visualization.py
+Copied from: https://github.com/airscholar/astro-salesforecast/blob/main/include/ml_models/model_visualization.py
 """
 
 import os
@@ -11,7 +11,7 @@ import pandas as pd
 import polars as pl
 from scipy import stats
 
-from src import PACKAGE_PATH, create_logger
+from include import PACKAGE_PATH, create_logger
 
 logger = create_logger(__name__)
 
