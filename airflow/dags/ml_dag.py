@@ -1,22 +1,10 @@
 import os
 import shutil
-import sys
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any
-
-import pandas as pd
 
 from airflow.decorators import dag, task
 from airflow.providers.standard.operators.bash import BashOperator
-
-# Make local project imports (include/...) resolvable when parsing the DAG
-# DAG file path: <project_root>/airflow/dags/ml_dag.py
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-# NOTE: Avoid importing project modules at parse time; import them inside tasks instead
 
 default_args = {
     "owner": "data-team",
@@ -68,6 +56,8 @@ def sales_forecast_training() -> None:
 
     @task()
     def validate_data_task(extract_result: dict[str, Any]) -> dict[str, Any]:
+        import pandas as pd
+        
         file_paths: dict[str, list[str]] = extract_result["file_paths"]
         total_rows: int = 0
         issues_found: list[str] = []
@@ -150,12 +140,12 @@ def sales_forecast_training() -> None:
         file_paths: dict[str, list[str]] = extract_result["file_paths"]
         print("Loading sales data from multiple files...")
         sales_dfs: list[pl.DataFrame] = []
-        max_files: int = 50
+        max_files: int = 5
         skipped_sales: int = 0
 
         for i, sales_file in enumerate(file_paths["sales"][:max_files]):
             try:
-                df = pd.read_parquet(sales_file, engine="pyarrow")
+                df = pl.read_parquet(sales_file)
                 sales_dfs.append(df)
             except Exception as e:
                 skipped_sales += 1
@@ -166,81 +156,84 @@ def sales_forecast_training() -> None:
         if not sales_dfs:
             raise ValueError("No readable sales parquet files were loaded; aborting training")
 
-        sales_df = pd.concat(sales_dfs, ignore_index=True)
+        sales_df: pl.DataFrame = pl.concat(sales_dfs)
         print(f"Combined sales data shape: {sales_df.shape}")
-        daily_sales = (
-            sales_df.groupby(["date", "store_id", "product_id", "category"])
+        daily_sales: pl.DataFrame = (
+            sales_df.group_by(["date", "store_id", "product_id", "category"])
             .agg(
-                {
-                    "quantity_sold": "sum",
-                    "revenue": "sum",
-                    "cost": "sum",
-                    "profit": "sum",
-                    "discount_percent": "mean",
-                    "unit_price": "mean",
-                }
+                pl.col("quantity_sold").sum(),
+                pl.col("revenue").sum().alias("sales"),
+                pl.col("cost").sum(),
+                pl.col("profit").sum(),
+                pl.col("discount_percent").mean(),
+                pl.col("unit_price").mean(),
             )
-            .reset_index()
+            .sort("date", "store_id")
         )
-        daily_sales = daily_sales.rename(columns={"revenue": "sales"})
+
         if file_paths.get("promotions"):
             try:
-                promo_df = pd.read_parquet(file_paths["promotions"][0], engine="pyarrow")
-                promo_summary = promo_df.groupby(["date", "product_id"])["discount_percent"].max().reset_index()
-                promo_summary["has_promotion"] = 1
-                daily_sales = daily_sales.merge(
-                    promo_summary[["date", "product_id", "has_promotion"]],
+                promo_df = pl.read_parquet(file_paths["promotions"][0])
+                promo_summary = (
+                    promo_df.group_by(["date", "product_id"])
+                    .agg(pl.col("discount_percent").max())
+                    .with_columns(pl.lit(1).cast(pl.Int8).alias("has_promotion"))
+                )
+                daily_sales = daily_sales.join(
+                    promo_summary.select(["date", "product_id", "has_promotion"]),
                     on=["date", "product_id"],
                     how="left",
-                )
-                daily_sales["has_promotion"] = daily_sales["has_promotion"].fillna(0)
+                ).with_columns(pl.col("has_promotion").fill_null(0))
             except Exception as e:
                 print(f"Skipping promotions merge due to error: {e}")
+
         if file_paths.get("customer_traffic"):
-            traffic_dfs = []
-            skipped_traffic = 0
+            traffic_dfs: list[pl.DataFrame] = []
+            skipped_traffic: int = 0
+
             for traffic_file in file_paths["customer_traffic"][:10]:
                 try:
-                    traffic_dfs.append(pd.read_parquet(traffic_file, engine="pyarrow"))
+                    traffic_dfs.append(pl.read_parquet(traffic_file))
                 except Exception as e:
                     skipped_traffic += 1
                     print(f"  Skipping unreadable traffic file {traffic_file}: {e}")
+
             if traffic_dfs:
-                traffic_df = pd.concat(traffic_dfs, ignore_index=True)
-                traffic_summary = (
-                    traffic_df.groupby(["date", "store_id"])
-                    .agg({"customer_traffic": "sum", "is_holiday": "max"})
-                    .reset_index()
+                traffic_df = pl.concat(traffic_dfs)
+                traffic_summary = traffic_df.group_by(["date", "store_id"]).agg(
+                    pl.col("customer_traffic").sum(), pl.col("is_holiday").max()
                 )
-                daily_sales = daily_sales.merge(traffic_summary, on=["date", "store_id"], how="left")
+                daily_sales = daily_sales.join(
+                    traffic_summary,
+                    on=["date", "store_id"],
+                    how="left",
+                )
             else:
                 print("No readable traffic files; skipping merge")
         print(f"Final training data shape: {daily_sales.shape}")
-        print(f"Columns: {daily_sales.columns.tolist()}")
+        print(f"Columns: {daily_sales.columns}")
+
         trainer = ModelTrainer()
-        store_daily_sales = (
-            daily_sales.groupby(["date", "store_id"])
+        store_daily_sales: pl.DataFrame = (
+            daily_sales.group_by(["date", "store_id"])
             .agg(
-                {
-                    "sales": "sum",
-                    "quantity_sold": "sum",
-                    "profit": "sum",
-                    "has_promotion": "mean",
-                    "customer_traffic": "first",
-                    "is_holiday": "first",
-                }
+                pl.col("sales").sum(),
+                pl.col("quantity_sold").sum(),
+                pl.col("profit").sum(),
+                pl.col("has_promotion").mean(),
+                pl.col("customer_traffic").first(),
+                pl.col("is_holiday").first(),
             )
-            .reset_index()
+            .with_columns(pl.col("date").cast(pl.Date))
         )
-        store_daily_sales["date"] = pd.to_datetime(store_daily_sales["date"])
-        store_daily_sales_pl = pl.from_pandas(store_daily_sales)
         train_df, val_df, test_df = trainer.prepare_data(
-            store_daily_sales_pl,
+            store_daily_sales,
             target_col="sales",
             group_cols=["store_id"],
             categorical_cols=["store_id"],
         )
         print(f"Train shape: {train_df.shape}, Val shape: {val_df.shape}, Test shape: {test_df.shape}")
+
         results = trainer.train_all_models(train_df, val_df, test_df, target_col="sales")
         for model_name, model_results in results.items():
             if "metrics" in model_results:
@@ -254,7 +247,8 @@ def sales_forecast_training() -> None:
         print("  - Residuals analysis")
         print("  - Error distribution")
         print("  - Feature importance comparison")
-        serializable_results = {}
+
+        serializable_results: dict[str, dict[str, Any]] = {}
         for model_name, model_results in results.items():
             serializable_results[model_name] = {"metrics": model_results.get("metrics", {})}
 

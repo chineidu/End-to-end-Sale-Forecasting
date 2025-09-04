@@ -1,0 +1,12 @@
+boto3>=1.40.21
+holidays>=0.79
+lightgbm>=4.6.0
+mlflow>=3.3.2
+omegaconf>=2.3.0
+pandas>=2.3.2
+polars>=1.32.3
+pyarrow>=21.0.0
+pydantic-settings>=2.10.1
+rich>=13.9.4
+scikit-learn>=1.7.1
+xgboost>=3.0.4

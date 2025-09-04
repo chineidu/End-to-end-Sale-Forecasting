@@ -154,7 +154,7 @@ def diagnose_model_performance(
     numeric_cols = [col for col in numeric_cols if col != target_col]
 
     if len(numeric_cols) > 0:
-        correlations = train_df[numeric_cols].to_pandas().corrwith(train_df[target_col])
+        correlations = train_df[numeric_cols].to_pandas().corrwith(train_df[target_col]) # type: ignore
         high_corr = correlations[abs(correlations) > 0.95]
 
         if len(high_corr) > 0:
