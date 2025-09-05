@@ -28,10 +28,10 @@ class ModelVisualizer:
 
         self.colors = {
             "xgboost": "#FF6B6B",
-            "lightgbm": "#4ECDC4",
-            "prophet": "#45B7D1",
-            "ensemble": "#96CEB4",
-            "actual": "#2C3E50",
+            "lightgbm": "#A7D7D4",
+            "prophet": "#99D145",
+            "ensemble": "#198050",
+            "actual": "#17222E",
         }
 
     def create_metrics_comparison_chart(
@@ -135,7 +135,10 @@ class ModelVisualizer:
             actual_data = actual_data.to_pandas()
 
         if isinstance(predictions_dict, dict):
-            predictions_dict = {k: v.to_pandas() for k, v in predictions_dict.items()}
+            # Convert polars DataFrames to pandas, leave pandas DataFrames unchanged
+            predictions_dict = {
+                k: (v.to_pandas() if isinstance(v, pl.DataFrame) else v) for k, v in predictions_dict.items()
+            }
 
         fig, ax = plt.subplots(figsize=(14, 8))
 
@@ -216,16 +219,61 @@ class ModelVisualizer:
             actual_data = actual_data.to_pandas()
 
         if isinstance(predictions_dict, dict):
-            predictions_dict = {k: v.to_pandas() for k, v in predictions_dict.items()}
+            predictions_dict = {
+                k: (v.to_pandas() if isinstance(v, pl.DataFrame) else v) for k, v in predictions_dict.items()
+            }
 
         # Calculate residuals for each model
         residuals_data: dict[str, pd.Series] = {}
         merged_data: dict[str, pd.DataFrame] = {}  # Keep track of merged dataframes
         for model_name, pred_df in predictions_dict.items():
+            # Ensure dates are comparable - coerce to datetime
+            try:
+                actual_dates = actual_data["date"].astype("datetime64[ns]")
+            except Exception:
+                actual_dates = pd.to_datetime(actual_data["date"])
+
+            try:
+                pred_dates = pred_df["date"].astype("datetime64[ns]")
+            except Exception:
+                pred_dates = pd.to_datetime(pred_df["date"])
+
+            actual_subset = pd.DataFrame({"date": actual_dates, target_col: actual_data[target_col].values})
+            pred_subset = pd.DataFrame({"date": pred_dates, "prediction": pred_df["prediction"].values})
+
             # Merge predictions with actual data
-            merged = pd.merge(actual_data[["date", target_col]], pred_df[["date", "prediction"]], on="date", how="inner")
-            residuals_data[model_name] = merged[target_col] - merged["prediction"]
+            merged = pd.merge(actual_subset, pred_subset, on="date", how="inner")
+            residuals = merged[target_col] - merged["prediction"]
+
+            # Logging for debugging empty residuals
+            logger.info(
+                "Residuals merge for %s: merged_shape=%s, residuals_len=%s, residuals_na=%s",
+                model_name,
+                merged.shape,
+                len(residuals),
+                int(residuals.isna().sum()),
+            )
+
+            residuals_data[model_name] = residuals
             merged_data[model_name] = merged  # Store the merged dataframe
+
+        # Filter out models with empty or invalid residuals
+        valid_residuals = {k: v for k, v in residuals_data.items() if len(v) > 0 and not v.isna().all()}
+
+        logger.info("Valid residuals keys: %s", {k: len(v) for k, v in residuals_data.items()})
+
+        if not valid_residuals:
+            logger.warning("No valid residuals data found for boxplot")
+            # Create empty plot
+            fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+            fig.suptitle("Residuals Analysis - No Data Available", fontsize=16)
+            for ax in axes.flat:
+                ax.text(0.5, 0.5, "No residuals data available", ha="center", va="center", transform=ax.transAxes)
+            plt.tight_layout()
+            if save_path:
+                plt.savefig(save_path, dpi=300, bbox_inches="tight")
+                plt.close()
+            return fig
 
         # Create matplotlib subplots
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))
@@ -233,10 +281,23 @@ class ModelVisualizer:
 
         # 1. Box plot of residuals
         ax1 = axes[0, 0]
-        box_data = list(residuals_data.values())
-        box_colors = [self.colors.get(model.lower(), "#95A5A6") for model in residuals_data.keys()]
+        box_data = [v.dropna().values for v in valid_residuals.values()]  # Convert to numpy arrays and drop NaN
+        box_labels = list(valid_residuals.keys())
+        box_colors = [self.colors.get(model.lower(), "#95A5A6") for model in valid_residuals.keys()]
 
-        bp = ax1.boxplot(box_data, labels=list(residuals_data.keys()), patch_artist=True)
+        # Ensure all arrays have the same length by padding with NaN if necessary
+        max_len = max(len(arr) for arr in box_data)
+        box_data_padded = []
+        for arr in box_data:
+            if len(arr) < max_len:
+                # Pad with NaN values
+                padded = np.full(max_len, np.nan)
+                padded[: len(arr)] = arr
+                box_data_padded.append(padded)
+            else:
+                box_data_padded.append(arr)
+
+        bp = ax1.boxplot(box_data_padded, labels=box_labels, patch_artist=True)
         for patch, color in zip(bp["boxes"], box_colors):
             patch.set_facecolor(color)
             patch.set_alpha(0.7)
@@ -248,9 +309,9 @@ class ModelVisualizer:
 
         # 2. Residuals vs Predicted (for first model)
         ax2 = axes[0, 1]
-        first_model = list(predictions_dict.keys())[0]
+        first_model = list(valid_residuals.keys())[0]
         first_pred = predictions_dict[first_model]
-        first_residuals = residuals_data[first_model]
+        first_residuals = valid_residuals[first_model]
 
         # Ensure we have matching lengths
         min_len = min(len(first_pred), len(first_residuals))
@@ -266,16 +327,16 @@ class ModelVisualizer:
 
         # 3. Residuals over time
         ax3 = axes[1, 0]
-        for model_name in residuals_data.keys():
+        for model_name in valid_residuals.keys():
             if model_name in merged_data:
                 # Use the dates from merged data to ensure alignment
                 dates = merged_data[model_name]["date"]
-                residuals = residuals_data[model_name]
+                residuals = valid_residuals[model_name]
 
                 ax3.plot(dates, residuals, color=self.colors.get(model_name.lower(), "#95A5A6"), label=model_name, alpha=0.7)
             else:
                 # Fallback for backward compatibility
-                residuals = residuals_data[model_name]
+                residuals = valid_residuals[model_name]
                 pred_df = predictions_dict[model_name]
                 min_len = min(len(pred_df), len(residuals))
                 dates = pred_df["date"].iloc[:min_len]
@@ -424,7 +485,9 @@ class ModelVisualizer:
             actual_data = actual_data.to_pandas()
 
         if isinstance(predictions_dict, dict):
-            predictions_dict = {k: v.to_pandas() for k, v in predictions_dict.items()}
+            predictions_dict = {
+                k: (v.to_pandas() if isinstance(v, pl.DataFrame) else v) for k, v in predictions_dict.items()
+            }
 
         fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -495,7 +558,9 @@ class ModelVisualizer:
             actual_data = actual_data.to_pandas()
 
         if isinstance(predictions_dict, dict):
-            predictions_dict = {k: v.to_pandas() for k, v in predictions_dict.items()}
+            predictions_dict = {
+                k: (v.to_pandas() if isinstance(v, pl.DataFrame) else v) for k, v in predictions_dict.items()
+            }
 
         os.makedirs(save_dir, exist_ok=True)
 

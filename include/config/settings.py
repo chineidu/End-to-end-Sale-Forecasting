@@ -79,6 +79,8 @@ class Settings(BaseSettings):
 
     # ======= Airflow =======
     AIRFLOW_UID: int = 50000
+    _AIRFLOW_WWW_USER_USERNAME: str = "airflow"
+    _AIRFLOW_WWW_USER_PASSWORD: SecretStr = SecretStr("airflow")
 
     @field_validator("MLFLOW_PORT", "AWS_S3_PORT", "POSTGRES_PORT", mode="before")
     @classmethod

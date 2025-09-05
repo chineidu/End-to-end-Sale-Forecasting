@@ -236,7 +236,7 @@ class RealisticSalesDataGenerator:
 
         return pd.DataFrame(events)
 
-    def generate_sales_data(self, output_dir: str = "/tmp/sales_data") -> dict[str, list[str]]:
+    def generate_sales_data(self, output_dir: str = "/opt/airflow/data") -> dict[str, list[str]]:
         """Generate realistic sales data partitioned by date and store (daily files)"""
         os.makedirs(output_dir, exist_ok=True)
 

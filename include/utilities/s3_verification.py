@@ -9,7 +9,7 @@ import mlflow
 from botocore.client import Config
 
 from include import create_logger
-from include.config import app_settings
+from include.config import app_settings, setup_env
 
 logger = create_logger(__name__)
 
@@ -70,14 +70,15 @@ def verify_s3_artifacts(run_id: str, expected_artifacts: list[str] | None = None
         bucket = parts[0]
         prefix = parts[1] if len(parts) > 1 else ""
 
-        # Create S3 client
+        # Create S3 client - use environment variables for consistency
+        import os
+
+        # Ensure environment variables are set 
+        setup_env()
         s3_client = boto3.client(
             "s3",
             endpoint_url=app_settings.mlflow_s3_endpoint_url,
-            aws_access_key_id=app_settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=app_settings.AWS_SECRET_ACCESS_KEY,
             config=Config(signature_version="s3v4"),
-            region_name=app_settings.AWS_DEFAULT_REGION,
         )
 
         # List objects in S3

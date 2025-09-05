@@ -3,8 +3,11 @@ import os
 import httpx
 
 from include import create_logger
+from include.config import app_settings
 
 logger = create_logger(__name__)
+MLFLOW_PORT = app_settings.MLFLOW_PORT
+MINIO_PORT = app_settings.AWS_S3_PORT
 
 
 def get_mlflow_endpoint() -> str:
@@ -29,9 +32,18 @@ def get_mlflow_endpoint() -> str:
 
     # Define endpoints based on environment
     endpoints = (
-        ["http://mlflow:5001", "http://host.docker.internal:5001", "http://172.17.0.1:5001", "http://localhost:5001"]
+        [
+            f"http://mlflow:{MLFLOW_PORT}",
+            f"http://host.docker.internal:{MLFLOW_PORT}",
+            f"http://172.17.0.1:{MLFLOW_PORT}",
+            f"http://localhost:{MLFLOW_PORT}",
+        ]
         if in_container
-        else ["http://localhost:5001", "http://127.0.0.1:5001", "http://host.docker.internal:5001"]
+        else [
+            f"http://localhost:{MLFLOW_PORT}",
+            f"http://127.0.0.1:{MLFLOW_PORT}",
+            f"http://host.docker.internal:{MLFLOW_PORT}",
+        ]
     )
 
     # Test each endpoint
@@ -46,7 +58,7 @@ def get_mlflow_endpoint() -> str:
             logger.debug(f"MLflow not accessible at {endpoint}: {e}")
 
     # Return default if none work
-    default = "http://mlflow:5001" if in_container else "http://localhost:5001"
+    default = f"http://mlflow:{MLFLOW_PORT}" if in_container else f"http://localhost:{MLFLOW_PORT}"
     logger.warning(f"Could not connect to MLflow, using default: {default}")
     return default
 
@@ -73,9 +85,18 @@ def get_minio_endpoint() -> str:
 
     # Define endpoints based on environment
     endpoints = (
-        ["http://minio:9000", "http://host.docker.internal:9000", "http://172.17.0.1:9000", "http://localhost:9000"]
+        [
+            f"http://minio:{MINIO_PORT}",
+            f"http://host.docker.internal:{MINIO_PORT}",
+            f"http://172.17.0.1:{MINIO_PORT}",
+            f"http://localhost:{MINIO_PORT}",
+        ]
         if in_container
-        else ["http://localhost:9000", "http://127.0.0.1:9000", "http://host.docker.internal:9000"]
+        else [
+            f"http://localhost:{MINIO_PORT}",
+            f"http://127.0.0.1:{MINIO_PORT}",
+            f"http://host.docker.internal:{MINIO_PORT}",
+        ]
     )
 
     # Test each endpoint
@@ -90,6 +111,6 @@ def get_minio_endpoint() -> str:
             logger.debug(f"MinIO not accessible at {endpoint}: {e}")
 
     # Return default if none work
-    default = "http://minio:9000" if in_container else "http://localhost:9000"
+    default = f"http://minio:{MINIO_PORT}" if in_container else f"http://localhost:{MINIO_PORT}"
     logger.warning(f"Could not connect to MinIO, using default: {default}")
     return default

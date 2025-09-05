@@ -15,7 +15,7 @@ from mlflow.pyfunc import PyFuncModel
 from mlflow.tracking import MlflowClient  # type: ignore
 
 from include import create_logger
-from include.config import app_config, app_settings
+from include.config import app_config
 from include.utilities.service_discovery import get_mlflow_endpoint
 
 logger = create_logger(__name__)
@@ -24,7 +24,7 @@ logger = create_logger(__name__)
 class MLflowManager:
     def __init__(self) -> None:
         mlflow_config = app_config.mlflow
-        self.tracking_uri = app_settings.mlflow_tracking_uri or get_mlflow_endpoint()
+        self.tracking_uri = get_mlflow_endpoint()
 
         self.experiment_name = mlflow_config.experiment_name
         self.registry_name = mlflow_config.registry_name
@@ -39,7 +39,7 @@ class MLflowManager:
 
         self.client = MlflowClient(tracking_uri=self.tracking_uri)
 
-    def get_run_id(self, run_name: str | None=None) -> str:
+    def get_run_id(self, run_name: str | None = None) -> str:
         """
         Generate a unique run ID for an MLflow run.
 
@@ -267,7 +267,7 @@ class MLflowManager:
         """
         try:
             return mlflow.pyfunc.load_model(model_uri)
-        
+
         except Exception:
             # Try loading from artifacts
             if "runs:/" in model_uri:
@@ -275,7 +275,7 @@ class MLflowManager:
                 artifact_path = "/".join(model_uri.split("/")[2:])
                 local_path = mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path=f"{artifact_path}_model.pkl")  # type: ignore
                 return joblib.load(local_path)
-            
+
             raise ValueError(f"Cannot load model from {model_uri}") from None
 
     def register_model(self, run_id: str, model_name: str, artifact_path: str) -> str:

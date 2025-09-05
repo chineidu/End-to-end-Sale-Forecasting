@@ -10,7 +10,7 @@ import mlflow
 from botocore.client import Config
 
 from include import create_logger
-from include.config import app_settings
+from include.config import app_settings, setup_env
 from include.utilities.service_discovery import get_minio_endpoint
 
 logger = create_logger(__name__)
@@ -20,11 +20,14 @@ class MLflowS3Manager:
     """Manager class to ensure MLflow artifacts are stored in S3/MinIO"""
 
     def __init__(self) -> None:
+        # Ensure environment variables are set
+        setup_env()
+
         self.s3_client = boto3.client(
             "s3",
-            endpoint_url=app_settings.mlflow_s3_endpoint_url or get_minio_endpoint(),
+            endpoint_url=get_minio_endpoint(),
             aws_access_key_id=app_settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=app_settings.AWS_SECRET_ACCESS_KEY,
+            aws_secret_access_key=app_settings.AWS_SECRET_ACCESS_KEY.get_secret_value(),
             config=Config(signature_version="s3v4"),
             region_name=app_settings.AWS_DEFAULT_REGION,
         )

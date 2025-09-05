@@ -327,9 +327,19 @@ class ModelTrainer:
         """
         logger.info("Training LightGBM model")
 
-        best_params = self.model_config["lightgbm"]["params"]
+        # Access model config using attribute access (ModelsConfig Pydantic model)
+        best_params = self.model_config.lightgbm.params
+
         model = lgb.LGBMRegressor(**best_params)  # type: ignore
-        model.fit(X_train, y_train, eval_set=[(X_val, y_val)], callbacks=[lgb.early_stopping(50)])
+
+        # Use sklearn-compatible early stopping parameter to avoid callback API differences
+        # This is compatible with scikit-learn API wrapper for LightGBM
+        model.fit(
+            X_train,
+            y_train,
+            eval_set=[(X_val, y_val)],
+            callbacks=[lgb.early_stopping(50)],
+        )
 
         self.models["lightgbm"] = model
         return model
@@ -444,7 +454,8 @@ class ModelTrainer:
 
                 results["lightgbm"] = {"model": lgb_model, "metrics": lgb_metrics, "predictions": lgb_pred}
             except Exception as lgb_err:
-                logger.warning(f"Skipping LightGBM due to error: {lgb_err}")
+                # Log exception with stack trace so we can diagnose why LightGBM failed
+                logger.exception(f"Skipping LightGBM due to error: {lgb_err}")
 
             # Weighted ensemble based on individual model performance (using validation R2)
             # Ensemble: if LightGBM is present, use weighted; otherwise fall back to XGBoost only
@@ -507,7 +518,7 @@ class ModelTrainer:
             # Generate visualizations
             logger.info("Generating model comparison visualizations...")
             try:
-                self._generate_and_log_visualizations(results, test_df, target_col)
+                self._generate_and_log_visualizations(results, test_df)
             except Exception as viz_error:
                 logger.error(f"Visualization generation failed: {viz_error}", exc_info=True)
 
@@ -568,7 +579,8 @@ class ModelTrainer:
             for model_name, model_results in results.items():
                 if "predictions" in model_results and model_results["predictions"] is not None:
                     pred_df: pl.DataFrame = test_df.select(["date"]).clone()
-                    pred_df = pred_df.with_columns(pl.Series("predictions", values=model_results["predictions"]))
+                    # Visualizer expects a column named 'prediction' (singular)
+                    pred_df = pred_df.with_columns(pl.Series("prediction", values=model_results["predictions"]))
                     predictions_dict[model_name] = pred_df
 
             # Extract feature importance if available
@@ -631,38 +643,38 @@ class ModelTrainer:
         <head>
             <title>Model Comparison Report</title>
             <style>
-                body {
+                body {{
                     font-family: Arial, sans-serif;
                     margin: 20px;
                     background-color: #f5f5f5;
-                }
-                h1, h2 {
+                }}
+                h1, h2 {{
                     color: #333;
-                }
-                .section {
+                }}
+                .section {{
                     background-color: white;
                     padding: 20px;
                     margin-bottom: 20px;
                     border-radius: 8px;
                     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                }
-                .timestamp {
+                }}
+                .timestamp {{
                     color: #666;
                     font-size: 14px;
-                }
-                iframe {
+                }}
+                iframe {{
                     width: 100%;
                     height: 800px;
                     border: 1px solid #ddd;
                     border-radius: 4px;
                     margin-top: 10px;
-                }
-                img {
+                }}
+                img {{
                     max-width: 100%;
                     height: auto;
                     border-radius: 4px;
                     margin-top: 10px;
-                }
+                }}
             </style>
         </head>
         <body>
@@ -670,7 +682,7 @@ class ModelTrainer:
             <p class="timestamp">Generated on: {timestamp}</p>
         """
 
-        html_content: str = html_content.format(timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        html_content: str = html_content.format(timestamp=datetime.now().isoformat(timespec="seconds"))
 
         # Add each visualization section
         sections: list[tuple[str, str]] = [
@@ -716,6 +728,8 @@ class ModelTrainer:
 
         Also logs the artifacts to MLflow.
         """
+        os.makedirs(f"{PACKAGE_PATH}/artifacts", exist_ok=True)
+        
         joblib.dump(self.scalers, f"{PACKAGE_PATH}/artifacts/scalers.pkl")
         joblib.dump(self.label_encoders, f"{PACKAGE_PATH}/artifacts/encoders.pkl")
         joblib.dump(self.feature_cols, f"{PACKAGE_PATH}/artifacts/feature_cols.pkl")
