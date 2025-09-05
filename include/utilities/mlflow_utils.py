@@ -150,10 +150,10 @@ class MLflowManager:
                 mlflow.log_artifact(model_path, artifact_path=f"models/{model_name}")  # type: ignore
                 mlflow.log_artifact(metadata_path, artifact_path=f"models/{model_name}")  # type: ignore
 
-                logger.info(f"Successfully saved {model_name} model as artifact")
+                logger.info(f"✅ Successfully saved {model_name} model as artifact")
 
         except Exception as e:
-            logger.error(f"Failed to log model {model_name}: {e}")
+            logger.error(f"❌ Failed to log model {model_name}: {e}")
 
     def log_artifacts(self, artifact_path: str) -> None:
         """
@@ -203,7 +203,7 @@ class MLflowManager:
         run_id = run.info.run_id if run else None
 
         mlflow.end_run(status=status)  # type: ignore
-        logger.info("Ended MLflow run")
+        logger.info("🚨 Ended MLflow run")
 
         # Sync artifacts to S3 after run ends
         if run_id and status == "FINISHED":
@@ -212,10 +212,10 @@ class MLflowManager:
 
                 s3_manager = MLflowS3Manager()
                 s3_manager.sync_mlflow_artifacts_to_s3(run_id)
-                logger.info(f"Synced artifacts to S3 for run {run_id}")
+                logger.info(f"✅ Synced artifacts to S3 for run {run_id}")
 
             except Exception as e:
-                logger.warning(f"Failed to sync artifacts to S3: {e}")
+                logger.warning(f"❌ Failed to sync artifacts to S3: {e}")
 
     def get_best_model(self, metric: str = "rmse", ascending: bool = True) -> dict[str, Any]:
         """
@@ -276,7 +276,7 @@ class MLflowManager:
                 local_path = mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path=f"{artifact_path}_model.pkl")  # type: ignore
                 return joblib.load(local_path)
 
-            raise ValueError(f"Cannot load model from {model_uri}") from None
+            raise ValueError(f"❌ Cannot load model from {model_uri}") from None
 
     def register_model(self, run_id: str, model_name: str, artifact_path: str) -> str:
         """
@@ -301,7 +301,7 @@ class MLflowManager:
             model_version = mlflow.register_model(model_uri, f"{self.registry_name}_{model_name}")  # type: ignore
             return model_version.version
         except Exception:
-            logger.warning("Model registration not available, using run_id as version")
+            logger.warning("❌ Model registration not available, using run_id as version")
             return run_id
 
     def transition_model_stage(self, model_name: str, version: str, stage: str) -> None:
@@ -322,7 +322,7 @@ class MLflowManager:
                 name=f"{self.registry_name}_{model_name}", version=version, stage=stage
             )
         except Exception:
-            logger.warning("Model stage transition not available")
+            logger.warning("❌ Model stage transition not available")
 
     def get_latest_model_version(self, model_name: str, stage: str | None = None) -> dict[str, Any]:
         """

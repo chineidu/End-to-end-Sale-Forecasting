@@ -113,7 +113,7 @@ class ModelTrainer:
 
         missing_cols: list[str] = list(set(required_cols) - set(df.columns))
         if missing_cols:
-            raise ValueError(f"Missing required columns for training: {missing_cols}")
+            raise ValueError(f"❌ Missing required columns for training: {missing_cols}")
 
         # Feature engineering
         df_features: pl.DataFrame = self.feature_engineer.create_all_features(
@@ -431,7 +431,7 @@ class ModelTrainer:
             results["xgboost"] = {"model": xgb_model, "metrics": xgb_metrics, "predictions": xgb_pred}
 
             # ================================
-            # ======= LightGBM Training =========
+            # ======= LightGBM Training ======
             # ================================
             try:
                 lgb_model = self.train_lightgbm(X_train, y_train, X_val, y_val)
@@ -457,8 +457,7 @@ class ModelTrainer:
 
                 results["lightgbm"] = {"model": lgb_model, "metrics": lgb_metrics, "predictions": lgb_pred}
             except Exception as lgb_err:
-                # Log exception with stack trace so we can diagnose why LightGBM failed
-                logger.exception(f"Skipping LightGBM due to error: {lgb_err}")
+                logger.exception(f"❌ Skipping LightGBM due to error: {lgb_err}")
 
             # ================================
             # ====== Ensemble Training =======
@@ -474,14 +473,14 @@ class ModelTrainer:
 
                 # Calculate weights with a minimum weight constraint
                 min_weight = 0.2
-                xgb_weight = max(min_weight, xgb_val_r2 / (xgb_val_r2 + lgb_val_r2))
-                lgb_weight = max(min_weight, lgb_val_r2 / (xgb_val_r2 + lgb_val_r2))
+                xgb_weight: float = max(min_weight, xgb_val_r2 / (xgb_val_r2 + lgb_val_r2))
+                lgb_weight: float = max(min_weight, lgb_val_r2 / (xgb_val_r2 + lgb_val_r2))
                 total_weight = xgb_weight + lgb_weight
                 xgb_weight /= total_weight
                 lgb_weight /= total_weight
-                logger.info(f"Ensemble weights - XGBoost: {xgb_weight:.3f}, LightGBM: {lgb_weight:.3f}")
+                logger.info(f"⭐ Ensemble weights - XGBoost: {xgb_weight:.3f}, LightGBM: {lgb_weight:.3f}")
 
-                ensemble_weights = {"xgboost": xgb_weight, "lightgbm": lgb_weight}
+                ensemble_weights: dict[str, float] = {"xgboost": xgb_weight, "lightgbm": lgb_weight}
                 ensemble_pred = xgb_weight * xgb_pred + lgb_weight * results["lightgbm"]["predictions"]
                 ensemble_models = {"xgboost": xgb_model, "lightgbm": results["lightgbm"]["model"]}
 
@@ -500,7 +499,7 @@ class ModelTrainer:
             # Save ensemble model
             self.models["ensemble"] = ensemble_model
 
-            ensemble_metrics = self.calculate_metrics(y_test, ensemble_pred)
+            ensemble_metrics: dict[str, float] = self.calculate_metrics(y_test, ensemble_pred)
 
             self.mlflow_manager.log_metrics({f"ensemble_{k}": v for k, v in ensemble_metrics.items()})
             self.mlflow_manager.log_model(ensemble_model, "ensemble", input_example=None)
@@ -509,20 +508,20 @@ class ModelTrainer:
 
             # Run diagnostics
             logger.info("Running model diagnostics...")
-            test_predictions = {
+            test_predictions: dict[str, np.ndarray | None] = {
                 "xgboost": xgb_pred if "xgboost" in results else None,
                 "lightgbm": lgb_pred if "lightgbm" in results else None,
                 "ensemble": ensemble_pred,
             }
 
-            diagnosis = diagnose_model_performance(train_df, val_df, test_df, test_predictions, target_col)
+            diagnosis: dict[str, Any] = diagnose_model_performance(train_df, val_df, test_df, test_predictions, target_col)
 
             logger.info("Diagnostic recommendations:")
             for rec in diagnosis["recommendations"]:
                 logger.warning(f"- {rec}")
 
             # Generate visualizations
-            logger.info("Generating model comparison visualizations...")
+            logger.info("🚨 Generating model comparison visualizations...")
             try:
                 self._generate_and_log_visualizations(results, test_df)
             except Exception as viz_error:
@@ -533,7 +532,8 @@ class ModelTrainer:
 
             # Get current run ID for verification
             current_run_id = mlflow.active_run().info.run_id  # type: ignore
-
+            
+            # End MLflow run
             self.mlflow_manager.end_run()
 
             logger.info("Syncing artifacts to S3...")
@@ -602,7 +602,7 @@ class ModelTrainer:
 
             # Create temporary directory for visualizations
             with tempfile.TemporaryDirectory() as temp_dir:
-                logger.info(f"Creating visualizations in temporary directory: {temp_dir}")
+                logger.info(f"🚨 Creating visualizations in temporary directory: {temp_dir}")
 
                 # Generate all visualizations
                 saved_files = visualizer.create_comprehensive_report(
@@ -613,7 +613,7 @@ class ModelTrainer:
                     save_dir=temp_dir,
                 )
 
-                logger.info(f"Generated {len(saved_files)} visualization files: {list(saved_files.keys())}")
+                logger.info(f"✅ Generated {len(saved_files)} visualization files: {list(saved_files.keys())}")
 
                 # Log each visualization to MLflow
                 for viz_name, file_path in saved_files.items():
@@ -630,11 +630,11 @@ class ModelTrainer:
                 combined_report = os.path.join(temp_dir, "model_comparison_report.html")
                 if os.path.exists(combined_report):
                     mlflow.log_artifact(combined_report, "reports")  # type: ignore
-                    logger.info("Logged combined HTML report")
+                    logger.info("✅ Logged combined HTML report")
 
         except Exception as e:
             # Don't fail the entire run
-            logger.error(f"Failed to generate visualizations: {e}")
+            logger.error(f"❌ Failed to generate visualizations: {e}")
 
     def _create_combined_html_report(self, saved_files: dict[str, str], save_dir: str) -> None:
         """
@@ -756,4 +756,4 @@ class ModelTrainer:
 
         self.mlflow_manager.log_artifacts(f"{PACKAGE_PATH}/artifacts")
 
-        logger.info("Artifacts saved successfully")
+        logger.info("✅ Artifacts saved successfully")

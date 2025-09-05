@@ -227,6 +227,7 @@ class ModelVisualizer:
         # Calculate residuals for each model
         residuals_data: dict[str, pd.Series] = {}
         merged_data: dict[str, pd.DataFrame] = {}  # Keep track of merged dataframes
+
         for model_name, pred_df in predictions_dict.items():
             # Ensure dates are comparable - coerce to datetime
             try:
@@ -273,6 +274,7 @@ class ModelVisualizer:
             for ax in axes.flat:
                 ax.text(0.5, 0.5, "No residuals data available", ha="center", va="center", transform=ax.transAxes)
             plt.tight_layout()
+
             if save_path:
                 plt.savefig(save_path, dpi=300, bbox_inches="tight")
                 plt.close()
@@ -497,7 +499,12 @@ class ModelVisualizer:
         # Iterate over each model and calculate errors
         for model_name, pred_df in predictions_dict.items():
             # Merge predictions with actual data
-            merged: pd.DataFrame = pd.merge(actual_data[["date", target_col]], pred_df[["date", "prediction"]], on="date", how="inner")
+            merged: pd.DataFrame = pd.merge(
+                actual_data[["date", target_col]],
+                pred_df[["date", "prediction"]],
+                on="date",
+                how="inner",
+            )
 
             # Calculate absolute errors
             errors: pd.Series = (merged[target_col] - merged["prediction"]).abs()

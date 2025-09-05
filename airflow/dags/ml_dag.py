@@ -30,7 +30,7 @@ default_args = {
 
 @dag(
     schedule="@weekly",
-    start_date=datetime(2025, 7, 22),
+    start_date=datetime(2025, 9, 10),
     catchup=False,
     default_args=default_args,
     description="Train sales forecasting models",
@@ -56,8 +56,8 @@ def sales_forecast_training() -> None:
         """
         from include.utilities.data_gen import RealisticSalesDataGenerator
 
-        data_output_dir = "data/"
-        # Clean previous run outputs to avoid mixing stale/corrupt files
+        data_output_dir: str = "data/"
+
         try:
             if os.path.exists(data_output_dir):
                 shutil.rmtree(data_output_dir)
@@ -72,6 +72,7 @@ def sales_forecast_training() -> None:
 
         for data_type, paths in file_paths.items():
             print(f"  - {data_type}: {len(paths)} files")
+
         return {
             "data_output_dir": data_output_dir,
             "file_paths": file_paths,
@@ -188,7 +189,7 @@ def sales_forecast_training() -> None:
         file_paths: dict[str, list[str]] = extract_result["file_paths"]
         print("Loading sales data from multiple files...")
         sales_dfs: list[pl.DataFrame] = []
-        max_files: int = 50
+        max_files: int = 400
         skipped_sales: int = 0
 
         for i, sales_file in enumerate(file_paths["sales"][:max_files]):
@@ -451,10 +452,13 @@ def sales_forecast_training() -> None:
     model_versions = register_best_model_task(evaluation_result)
     _ = transition_to_production_task(model_versions)
     report = generate_performance_report_task(training_result, validation_summary)
+
     cleanup = BashOperator(
         task_id="cleanup",
         bash_command="rm -rf /tmp/sales_data /tmp/performance_report.json || true",
     )
+
+    # Task dependencies using operator chaining
     report >> cleanup
 
 
