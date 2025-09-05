@@ -218,4 +218,6 @@ __marimo__/
 !**/airflow/dags/
 **/**/data/*
 **/**/artifacts/*
+**/**/logs/*
+
 
