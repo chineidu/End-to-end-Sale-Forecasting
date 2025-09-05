@@ -1,3 +1,4 @@
+import os
 import re
 from urllib.parse import quote
 
@@ -76,6 +77,9 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: SecretStr = SecretStr("mlflow")
     POSTGRES_DB: str = "mlflow"
 
+    # ======= Airflow =======
+    AIRFLOW_UID: int = 50000
+
     @field_validator("MLFLOW_PORT", "AWS_S3_PORT", "POSTGRES_PORT", mode="before")
     @classmethod
     def parse_port_fields(cls, v: str | int) -> int:
@@ -135,4 +139,38 @@ def refresh_settings() -> Settings:
     return Settings()  # type: ignore
 
 
+def setup_env() -> None:
+    """Sets environment variables for MLflow, MinIO, and AWS."""
+    os.environ["MLFLOW_TRACKING_URI"] = app_settings.mlflow_tracking_uri
+    os.environ["MLFLOW_S3_ENDPOINT_URL"] = app_settings.mlflow_s3_endpoint_url
+    os.environ["MLFLOW_DB_URI"] = (
+        f"postgresql://{app_settings.POSTGRES_USER}:"
+        f"{app_settings.POSTGRES_PASSWORD.get_secret_value()}"
+        f"@{app_settings.POSTGRES_HOST}"
+        f":{app_settings.POSTGRES_PORT}"
+        f"/{app_settings.POSTGRES_DB}"
+    )
+    os.environ["MLFLOW_ARTIFACT_ROOT"] = f"s3://{app_settings.AWS_S3_BUCKET}"
+    os.environ["AWS_ACCESS_KEY_ID"] = app_settings.AWS_ACCESS_KEY_ID
+    os.environ["AWS_SECRET_ACCESS_KEY"] = app_settings.AWS_SECRET_ACCESS_KEY.get_secret_value()
+    os.environ["AWS_DEFAULT_REGION"] = app_settings.AWS_DEFAULT_REGION
+    os.environ["MINIO_ROOT_USER"] = app_settings.AWS_ACCESS_KEY_ID
+    os.environ["MINIO_ROOT_PASSWORD"] = app_settings.AWS_SECRET_ACCESS_KEY.get_secret_value()
+
+
 app_settings: Settings = refresh_settings()
+
+# Call setup_env only once at startup
+_setup_env_called: bool = False
+
+
+def setup_env_once() -> None:
+    """Sets environment variables for MLflow, MinIO, and AWS. Called only once."""
+    global _setup_env_called
+    if not _setup_env_called:
+        setup_env()
+        _setup_env_called = True
+
+
+# Automatically call setup_env when the module is imported
+setup_env_once()

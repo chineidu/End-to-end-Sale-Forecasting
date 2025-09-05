@@ -4,7 +4,7 @@ Inspired by: https://github.com/airscholar/astro-salesforecast/blob/main/include
 
 import os
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import joblib
 import mlflow
@@ -39,7 +39,26 @@ class MLflowManager:
 
         self.client = MlflowClient(tracking_uri=self.tracking_uri)
 
-    def start_run(self, run_name: Optional[str] = None, tags: Optional[dict[str, str]] = None) -> str:
+    def get_run_id(self, run_name: str | None=None) -> str:
+        """
+        Generate a unique run ID for an MLflow run.
+
+        Parameters
+        ----------
+        run_name : str, optional
+            If provided, the generated run ID will be prefixed with this string.
+            If not provided, a default name will be generated.
+
+        Returns
+        -------
+        str
+            Unique run ID to be used for MLflow experiments.
+        """
+        if run_name is None:
+            run_name = f"run_{datetime.now().isoformat(timespec='seconds')}"
+        return run_name
+
+    def start_run(self, run_name: str | None = None, tags: dict[str, str] | None = None) -> str:
         """
         Start a new MLflow run.
 
@@ -55,8 +74,7 @@ class MLflowManager:
         str
             ID of the started run.
         """
-        if run_name is None:
-            run_name = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        run_name = self.get_run_id(run_name)
 
         run = mlflow.start_run(run_name=run_name, tags=tags)  # type: ignore
         logger.info(f"Started MLflow run: {run.info.run_id}")
@@ -74,7 +92,7 @@ class MLflowManager:
         for key, value in params.items():
             mlflow.log_param(key, value)  # type: ignore
 
-    def log_metrics(self, metrics: dict[str, float], step: Optional[int] = None) -> None:
+    def log_metrics(self, metrics: dict[str, float], step: int | None = None) -> None:
         """Log metrics to MLflow."""
         for key, value in metrics.items():
             mlflow.log_metric(key, value, step=step)  # type: ignore
@@ -249,6 +267,7 @@ class MLflowManager:
         """
         try:
             return mlflow.pyfunc.load_model(model_uri)
+        
         except Exception:
             # Try loading from artifacts
             if "runs:/" in model_uri:
@@ -256,6 +275,7 @@ class MLflowManager:
                 artifact_path = "/".join(model_uri.split("/")[2:])
                 local_path = mlflow.artifacts.download_artifacts(run_id=run_id, artifact_path=f"{artifact_path}_model.pkl")  # type: ignore
                 return joblib.load(local_path)
+            
             raise ValueError(f"Cannot load model from {model_uri}") from None
 
     def register_model(self, run_id: str, model_name: str, artifact_path: str) -> str:

@@ -2,8 +2,10 @@
 Inspired by: https://github.com/airscholar/astro-salesforecast/blob/main/include/ml_models/train_models.py
 """
 
+import base64
 import json
 import os
+import tempfile
 from datetime import datetime
 from typing import Any
 
@@ -21,21 +23,63 @@ from include import PACKAGE_PATH, create_logger
 from include.config import app_config
 from include.ml.diagnostics import diagnose_model_performance
 from include.ml.ensemble_model import EnsembleModel
+from include.ml.visualization import ModelVisualizer
 from include.utilities.feature_engineering import FeatureEngineer
+from include.utilities.mlflow_s3_utils import MLflowS3Manager
 from include.utilities.mlflow_utils import MLflowManager
+from include.utilities.s3_verification import log_s3_verification_results, verify_s3_artifacts
 
 logger = create_logger(__name__)
 
 
 class ModelTrainer:
     def __init__(self) -> None:
+        """
+        Initializes a ModelTrainer object.
+
+        The ModelTrainer object is used to train and diagnose the performance of
+        machine learning models.
+
+        Parameters
+        ----------
+        None
+
+        Attributes
+        ----------
+        model_config : ModelsConfig
+            MLflow models configuration
+        training_config : TrainingConfig
+            Training configuration
+        mlflow_manager : MLflowManager
+            Manager for MLflow
+        feature_engineer : FeatureEngineer
+            Feature engineering utilities
+        models : dict[str, Any]
+            Trained models
+        scalers : dict[str, StandardScaler]
+            Scalers used for feature scaling
+        label_encoders : dict[str, LabelEncoder]
+            Label encoders used for categorical encoding
+        """
         self.model_config = app_config.models
         self.training_config = app_config.training
         self.mlflow_manager = MLflowManager()
         self.feature_engineer = FeatureEngineer()
-        self.models = {}
-        self.scalers = {}
-        self.label_encoders = {}
+        self.models: dict[str, Any] = {}
+        self.scalers: dict[str, StandardScaler] = {}
+        self.label_encoders: dict[str, LabelEncoder] = {}
+
+    @property
+    def run_name(self) -> str:
+        """
+        Property to get the run name.
+
+        Returns
+        -------
+        str
+            Run name.
+        """
+        return self.mlflow_manager.get_run_id(None)
 
     def prepare_data(
         self,
@@ -44,6 +88,25 @@ class ModelTrainer:
         group_cols: list[str] | None = None,
         categorical_cols: list[str] | None = None,
     ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+        """
+        Prepare data for training and validation.
+
+        Parameters
+        ----------
+        df : pl.DataFrame
+            Input DataFrame.
+        target_col : str, optional
+            Target column name. Defaults to "sales".
+        group_cols : list[str] | None, optional
+            Columns to group by when creating lag and rolling features. Defaults to None.
+        categorical_cols : list[str] | None, optional
+            Columns to create interaction features for. Defaults to None.
+
+        Returns
+        -------
+        tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]
+            Tuple of (train_df, val_df, test_df) DataFrames.
+        """
         required_cols: list[str] = ["date", target_col]
         if group_cols:
             required_cols.extend(group_cols)
@@ -128,25 +191,47 @@ class ModelTrainer:
         y_test = test_df[target_col]
 
         # Encode categorical features
+        # Note: sklearn's LabelEncoder raises on unseen labels. We map unseen labels to -1
+        # so validation/test data won't break the pipeline. We keep encoders in
+        # self.label_encoders to reuse during inference.
         cat_cols: list[str] = X_train.select(cs.string()).columns
         for var in cat_cols:
-            if var not in self.label_encoders:
-                self.label_encoders[var] = LabelEncoder()
-                X_train = X_train.with_columns(
-                    pl.Series(var, values=self.label_encoders[var].fit_transform(X_train[var]), dtype=pl.Int8)
-                )
-            else:
-                X_train = X_train.with_columns(
-                    pl.Series(var, values=self.label_encoders[var].transform(X_train[var]), dtype=pl.Int8)
-                )
+            train_values = X_train[var].to_list()
 
-            X_val = X_val.with_columns(pl.Series(var, values=self.label_encoders[var].transform(X_val[var]), dtype=pl.Int8))
-            X_test = X_test.with_columns(
-                pl.Series(var, values=self.label_encoders[var].transform(X_test[var]), dtype=pl.Int8)
-            )
+            if var not in self.label_encoders:
+                le = LabelEncoder()
+                encoded_train = le.fit_transform(train_values)
+                self.label_encoders[var] = le
+            else:
+                le = self.label_encoders[var]
+                # Transform training values with existing encoder; unknowns here are unlikely
+                # but map them to -1 defensively
+                try:
+                    encoded_train = le.transform(train_values)
+                except ValueError:
+                    mapping = {c: i for i, c in enumerate(le.classes_)}
+                    encoded_train = [mapping.get(v, -1) for v in train_values]
+
+            # Build mapping for known classes to safely encode val/test (unknown -> -1)
+            mapping = {c: i for i, c in enumerate(self.label_encoders[var].classes_)}
+
+            def _encode_list(values: list[str], mapping: dict[str, int] = mapping) -> list[int]:
+                """Encode a list of categorical values using an existing mapping."""
+                return [mapping.get(v, -1) for v in values]
+
+            val_values = X_val[var].to_list()
+            test_values = X_test[var].to_list()
+
+            encoded_val = _encode_list(val_values)
+            encoded_test = _encode_list(test_values)
+
+            # Attach encoded columns back as small-int (Int8). -1 reserved for unknowns.
+            X_train = X_train.with_columns(pl.Series(var, values=encoded_train, dtype=pl.Int8))
+            X_val = X_val.with_columns(pl.Series(var, values=encoded_val, dtype=pl.Int8))
+            X_test = X_test.with_columns(pl.Series(var, values=encoded_test, dtype=pl.Int8))
 
         # Track feature columns used for modeling (post-encoding, pre-scaling)
-        self.feature_cols = X_train.columns  # type: ignore[attr-defined]
+        self.feature_cols: list[str] = X_train.columns  # type: ignore[attr-defined]
 
         # Scale the features
         scaler = StandardScaler()
@@ -279,11 +364,11 @@ class ModelTrainer:
             A dictionary containing the results of the model training, including the trained models,
             the metrics, and the predictions.
         """
-        results = {}
+        results: dict[str, dict[str, Any]] = {}
 
         # Start MLflow run
         _ = self.mlflow_manager.start_run(
-            run_name=f"sales_forecast_training_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            run_name=f"{app_config.mlflow.experiment_name}_training_{datetime.now().isoformat(timespec='seconds')}",
             tags={"model_type": "ensemble"},
         )
 
@@ -335,33 +420,31 @@ class ModelTrainer:
 
             results["xgboost"] = {"model": xgb_model, "metrics": xgb_metrics, "predictions": xgb_pred}
 
-            # Train LightGBM if available
-            if self.lgb_available:
-                try:
-                    lgb_model = self.train_lightgbm(X_train, y_train, X_val, y_val)
-                    lgb_pred = lgb_model.predict(X_test)
-                    lgb_metrics = self.calculate_metrics(y_test, lgb_pred)
+            try:
+                lgb_model = self.train_lightgbm(X_train, y_train, X_val, y_val)
+                lgb_pred = lgb_model.predict(X_test)
+                lgb_metrics = self.calculate_metrics(y_test, lgb_pred)
 
-                    self.mlflow_manager.log_metrics({f"lightgbm_{k}": v for k, v in lgb_metrics.items()})
-                    self.mlflow_manager.log_model(lgb_model, "lightgbm", input_example=X_train_df.head())
+                self.mlflow_manager.log_metrics({f"lightgbm_{k}": v for k, v in lgb_metrics.items()})
+                self.mlflow_manager.log_model(lgb_model, "lightgbm", input_example=X_train_df.head())
 
-                    # Log feature importance for LightGBM
-                    lgb_importance: pl.DataFrame = (
-                        pl.DataFrame({"feature": self.feature_cols, "importance": lgb_model.feature_importances_})
-                        .sort("importance", descending=True)
-                        .head(20)
-                    )
-                    logger.info(f"Top LightGBM features:\n{lgb_importance.to_dicts()}")
-                    self.mlflow_manager.log_params(
-                        {
-                            f"lgb_top_feature_{idx}": f"{row[0]} ({row[1]:.4f})"
-                            for idx, row in enumerate(lgb_importance.iter_rows(), start=1)
-                        }
-                    )
+                # Log feature importance for LightGBM
+                lgb_importance: pl.DataFrame = (
+                    pl.DataFrame({"feature": self.feature_cols, "importance": lgb_model.feature_importances_})
+                    .sort("importance", descending=True)
+                    .head(20)
+                )
+                logger.info(f"Top LightGBM features:\n{lgb_importance.to_dicts()}")
+                self.mlflow_manager.log_params(
+                    {
+                        f"lgb_top_feature_{idx}": f"{row[0]} ({row[1]:.4f})"
+                        for idx, row in enumerate(lgb_importance.iter_rows(), start=1)
+                    }
+                )
 
-                    results["lightgbm"] = {"model": lgb_model, "metrics": lgb_metrics, "predictions": lgb_pred}
-                except Exception as lgb_err:
-                    logger.warning(f"Skipping LightGBM due to error: {lgb_err}")
+                results["lightgbm"] = {"model": lgb_model, "metrics": lgb_metrics, "predictions": lgb_pred}
+            except Exception as lgb_err:
+                logger.warning(f"Skipping LightGBM due to error: {lgb_err}")
 
             # Weighted ensemble based on individual model performance (using validation R2)
             # Ensemble: if LightGBM is present, use weighted; otherwise fall back to XGBoost only
@@ -384,6 +467,7 @@ class ModelTrainer:
                 ensemble_weights = {"xgboost": xgb_weight, "lightgbm": lgb_weight}
                 ensemble_pred = xgb_weight * xgb_pred + lgb_weight * results["lightgbm"]["predictions"]
                 ensemble_models = {"xgboost": xgb_model, "lightgbm": results["lightgbm"]["model"]}
+
             else:
                 logger.info("LightGBM not available; using XGBoost-only ensemble")
                 ensemble_weights = {"xgboost": 1.0}
@@ -435,9 +519,6 @@ class ModelTrainer:
 
             self.mlflow_manager.end_run()
 
-            # Sync artifacts to S3
-            from include.utilities.mlflow_s3_utils import MLflowS3Manager
-
             logger.info("Syncing artifacts to S3...")
             try:
                 s3_manager = MLflowS3Manager()
@@ -445,8 +526,6 @@ class ModelTrainer:
                 logger.info("✅ Successfully synced artifacts to S3")
 
                 # Verify S3 artifacts after sync
-                from include.utilities.s3_verification import log_s3_verification_results, verify_s3_artifacts
-
                 logger.info("Verifying S3 artifact storage...")
                 verification_results = verify_s3_artifacts(
                     run_id=current_run_id,
@@ -472,8 +551,158 @@ class ModelTrainer:
 
         return results
 
+    def _generate_and_log_visualizations(self, results: dict[str, Any], test_df: pl.DataFrame) -> None:
+        """Generate and log model comparison visualizations to MLflow"""
+        try:
+            logger.info("Starting visualization generation...")
+            visualizer = ModelVisualizer()
+
+            # Extract metrics
+            metrics_dict: dict[str, Any] = {}
+            for model_name, model_results in results.items():
+                if "metrics" in model_results:
+                    metrics_dict[model_name] = model_results["metrics"]
+
+            # Prepare predictions data
+            predictions_dict: dict[str, Any] = {}
+            for model_name, model_results in results.items():
+                if "predictions" in model_results and model_results["predictions"] is not None:
+                    pred_df: pl.DataFrame = test_df.select(["date"]).clone()
+                    pred_df = pred_df.with_columns(pl.Series("predictions", values=model_results["predictions"]))
+                    predictions_dict[model_name] = pred_df
+
+            # Extract feature importance if available
+            feature_importance_dict = {}
+            for model_name, model_results in results.items():
+                if model_name in ["xgboost", "lightgbm"] and "model" in model_results:
+                    model: Any = model_results["model"]
+                    if hasattr(model, "feature_importances_"):
+                        importance_df = pl.DataFrame(
+                            {"feature": self.feature_cols, "importance": model.feature_importances_}
+                        ).sort("importance", descending=True)
+                        feature_importance_dict[model_name] = importance_df
+
+            # Create temporary directory for visualizations
+            with tempfile.TemporaryDirectory() as temp_dir:
+                logger.info(f"Creating visualizations in temporary directory: {temp_dir}")
+
+                # Generate all visualizations
+                saved_files = visualizer.create_comprehensive_report(
+                    metrics_dict=metrics_dict,
+                    predictions_dict=predictions_dict,
+                    actual_data=test_df,
+                    feature_importance_dict=feature_importance_dict if feature_importance_dict else None,
+                    save_dir=temp_dir,
+                )
+
+                logger.info(f"Generated {len(saved_files)} visualization files: {list(saved_files.keys())}")
+
+                # Log each visualization to MLflow
+                for viz_name, file_path in saved_files.items():
+                    if os.path.exists(file_path):
+                        mlflow.log_artifact(file_path, "visualizations")  # type: ignore
+                        logger.info(f"Logged visualization: {viz_name} from {file_path}")
+                    else:
+                        logger.warning(f"Visualization file not found: {file_path}")
+
+                # Also create a combined HTML report
+                self._create_combined_html_report(saved_files, temp_dir)
+
+                # Log the combined report
+                combined_report = os.path.join(temp_dir, "model_comparison_report.html")
+                if os.path.exists(combined_report):
+                    mlflow.log_artifact(combined_report, "reports")  # type: ignore
+                    logger.info("Logged combined HTML report")
+
+        except Exception as e:
+            # Don't fail the entire run
+            logger.error(f"Failed to generate visualizations: {e}")
+
+    def _create_combined_html_report(self, saved_files: dict[str, str], save_dir: str) -> None:
+        """
+        Create a combined HTML report with all visualizations.
+
+        The HTML report includes all visualizations in a single page for easy comparison.
+        """
+
+        html_content: str = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Model Comparison Report</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    margin: 20px;
+                    background-color: #f5f5f5;
+                }
+                h1, h2 {
+                    color: #333;
+                }
+                .section {
+                    background-color: white;
+                    padding: 20px;
+                    margin-bottom: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                .timestamp {
+                    color: #666;
+                    font-size: 14px;
+                }
+                iframe {
+                    width: 100%;
+                    height: 800px;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    margin-top: 10px;
+                }
+                img {
+                    max-width: 100%;
+                    height: auto;
+                    border-radius: 4px;
+                    margin-top: 10px;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>Sales Forecast Model Comparison Report</h1>
+            <p class="timestamp">Generated on: {timestamp}</p>
+        """
+
+        html_content: str = html_content.format(timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+        # Add each visualization section
+        sections: list[tuple[str, str]] = [
+            ("metrics_comparison", "Model Performance Metrics"),
+            ("predictions_comparison", "Predictions Comparison"),
+            ("residuals_analysis", "Residuals Analysis"),
+            ("error_distribution", "Error Distribution"),
+            ("feature_importance", "Feature Importance"),
+            ("summary", "Summary Statistics"),
+        ]
+
+        for key, title in sections:
+            if key in saved_files:
+                html_content += f'<div class="section"><h2>{title}</h2>'
+
+                # All files are now PNG - base64 encode them
+                with open(saved_files[key], "rb") as f:
+                    img_data = base64.b64encode(f.read()).decode()
+                html_content += f'<img src="data:image/png;base64,{img_data}" alt="{title}">'
+
+                html_content += "</div>"
+
+        html_content += """
+        </body>
+        </html>
+        """
+
+        # Save the combined report
+        with open(os.path.join(save_dir, "model_comparison_report.html"), "w") as f:
+            f.write(html_content)
+
     def save_artifacts(self) -> None:
-        # Save scalers and encoders
         """
         Saves artifacts to disk in the expected format for MLflow.
 

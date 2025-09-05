@@ -47,6 +47,8 @@ x-airflow-common:
     dockerfile: docker/Dockerfile.airflow
     context: .
   image: custom-airflow:latest
+  env_file:
+    - .env
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
     AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
@@ -72,8 +74,10 @@ x-airflow-common:
   - ${AIRFLOW_PROJ_DIR:-.}/airflow/logs:/opt/airflow/logs
   - ${AIRFLOW_PROJ_DIR:-.}/airflow/config:/opt/airflow/config
   - ${AIRFLOW_PROJ_DIR:-.}/airflow/plugins:/opt/airflow/plugins
+
   # Mount project include so DAG tasks can import include.* modules
   - ${AIRFLOW_PROJ_DIR:-.}/include:/opt/airflow/include:ro
+  
   # Mount data directory for training data
   - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data
   user: "${AIRFLOW_UID:-50000}:0"

@@ -136,7 +136,7 @@ def diagnose_model_performance(
                 "extreme_high_count": extreme_high,
                 "residual_mean": residuals.mean(),
                 "residual_std": residuals.std(),
-                "mape": np.mean(np.abs(residuals / y_test)) * 100,
+                "mape": np.mean(np.abs(residuals.to_numpy() / y_test.to_numpy())) * 100,
             }
 
     # 4. Feature importance check
@@ -154,7 +154,7 @@ def diagnose_model_performance(
     numeric_cols = [col for col in numeric_cols if col != target_col]
 
     if len(numeric_cols) > 0:
-        correlations = train_df[numeric_cols].to_pandas().corrwith(train_df[target_col]) # type: ignore
+        correlations = train_df[numeric_cols].to_pandas().corrwith(train_df[target_col].to_pandas())  # type: ignore
         high_corr = correlations[abs(correlations) > 0.95]
 
         if len(high_corr) > 0:
@@ -165,9 +165,7 @@ def diagnose_model_performance(
 
     # 6. Sample size check
     if len(train_df) < 1000:
-        diagnosis["recommendations"].append(
-            f"Small training set ({len(train_df)} samples). Consider generating more data."
-        )
+        diagnosis["recommendations"].append(f"Small training set ({len(train_df)} samples). Consider generating more data.")
 
     # 7. Target variable analysis
     target_zeros = (y_train == 0).sum()

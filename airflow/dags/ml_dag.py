@@ -57,7 +57,7 @@ def sales_forecast_training() -> None:
     @task()
     def validate_data_task(extract_result: dict[str, Any]) -> dict[str, Any]:
         import pandas as pd
-        
+
         file_paths: dict[str, list[str]] = extract_result["file_paths"]
         total_rows: int = 0
         issues_found: list[str] = []
@@ -131,7 +131,7 @@ def sales_forecast_training() -> None:
         return validation_summary
 
     @task()
-    def train_models_task(extract_result):
+    def train_models_task(extract_result: dict[str, Any]) -> dict[str, Any]:
         # Local import to avoid heavy dependencies at DAG parse time
         import polars as pl
 
@@ -140,7 +140,7 @@ def sales_forecast_training() -> None:
         file_paths: dict[str, list[str]] = extract_result["file_paths"]
         print("Loading sales data from multiple files...")
         sales_dfs: list[pl.DataFrame] = []
-        max_files: int = 5
+        max_files: int = 50
         skipped_sales: int = 0
 
         for i, sales_file in enumerate(file_paths["sales"][:max_files]):
@@ -252,17 +252,15 @@ def sales_forecast_training() -> None:
         for model_name, model_results in results.items():
             serializable_results[model_name] = {"metrics": model_results.get("metrics", {})}
 
-        import mlflow
+        current_run = trainer.run_name
 
-        current_run = mlflow.active_run()
-        current_run_id = current_run.info.run_id if current_run else None
         return {
             "training_results": serializable_results,
-            "mlflow_run_id": current_run_id,
+            "mlflow_run_id": current_run,
         }
 
     @task()
-    def evaluate_models_task(training_result):
+    def evaluate_models_task(training_result) -> dict[str, Any]:
         from include.utilities.mlflow_utils import MLflowManager
 
         results = training_result["training_results"]
