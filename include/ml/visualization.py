@@ -3,6 +3,7 @@ Copied from: https://github.com/airscholar/astro-salesforecast/blob/main/include
 """
 
 import os
+from typing import Any
 
 import matplotlib.pyplot as plt
 import mlflow
@@ -52,14 +53,14 @@ class ModelVisualizer:
             The figure containing the comparison chart.
         """
         # Prepare data
-        models = list(metrics_dict.keys())
+        models: list[str] = list(metrics_dict.keys())
 
         # Create matplotlib figure
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
         fig.suptitle("Model Performance Metrics Comparison", fontsize=16)
 
         # Define metrics to plot
-        metrics_to_plot = [
+        metrics_to_plot: list[tuple[str, str, bool, Any]] = [
             ("rmse", "RMSE", True, axes[0, 0]),
             ("mae", "MAE", True, axes[0, 1]),
             ("mape", "MAPE (%)", True, axes[1, 0]),
@@ -67,8 +68,8 @@ class ModelVisualizer:
         ]
 
         for metric, title, lower_better, ax in metrics_to_plot:
-            values = [metrics_dict[model].get(metric, 0) for model in models]
-            colors = [self.colors.get(model.lower(), "#95A5A6") for model in models]
+            values: list[float] = [metrics_dict[model].get(metric, 0) for model in models]
+            colors: list[str] = [self.colors.get(model.lower(), "#95A5A6") for model in models]
 
             # Create bar chart
             bars = ax.bar(models, values, color=colors, alpha=0.7)
@@ -80,7 +81,7 @@ class ModelVisualizer:
 
             # Highlight best model
             if lower_better:
-                best_idx = values.index(min(values))
+                best_idx: int = values.index(min(values))
             else:
                 best_idx = values.index(max(values))
 
@@ -154,7 +155,7 @@ class ModelVisualizer:
 
         # Plot predictions for each model
         for model_name, pred_df in predictions_dict.items():
-            color = self.colors.get(model_name.lower(), "#95A5A6")
+            color: str = self.colors.get(model_name.lower(), "#95A5A6")
 
             ax.plot(
                 pred_df[date_col],
@@ -258,7 +259,9 @@ class ModelVisualizer:
             merged_data[model_name] = merged  # Store the merged dataframe
 
         # Filter out models with empty or invalid residuals
-        valid_residuals = {k: v for k, v in residuals_data.items() if len(v) > 0 and not v.isna().all()}
+        valid_residuals: dict[str, pd.Series[Any]] = {
+            k: v for k, v in residuals_data.items() if len(v) > 0 and not v.isna().all()
+        }
 
         logger.info("Valid residuals keys: %s", {k: len(v) for k, v in residuals_data.items()})
 
@@ -282,12 +285,12 @@ class ModelVisualizer:
         # 1. Box plot of residuals
         ax1 = axes[0, 0]
         box_data = [v.dropna().values for v in valid_residuals.values()]  # Convert to numpy arrays and drop NaN
-        box_labels = list(valid_residuals.keys())
-        box_colors = [self.colors.get(model.lower(), "#95A5A6") for model in valid_residuals.keys()]
+        box_labels: list[str] = list(valid_residuals.keys())
+        box_colors: list[str] = [self.colors.get(model.lower(), "#95A5A6") for model in valid_residuals.keys()]
 
         # Ensure all arrays have the same length by padding with NaN if necessary
         max_len = max(len(arr) for arr in box_data)
-        box_data_padded = []
+        box_data_padded: list[np.ndarray] = []
         for arr in box_data:
             if len(arr) < max_len:
                 # Pad with NaN values
@@ -310,13 +313,13 @@ class ModelVisualizer:
         # 2. Residuals vs Predicted (for first model)
         ax2 = axes[0, 1]
         first_model = list(valid_residuals.keys())[0]
-        first_pred = predictions_dict[first_model]
-        first_residuals = valid_residuals[first_model]
+        first_pred: pd.DataFrame = predictions_dict[first_model]
+        first_residuals: pd.Series = valid_residuals[first_model]
 
         # Ensure we have matching lengths
         min_len = min(len(first_pred), len(first_residuals))
-        pred_values = first_pred["prediction"].values[:min_len]
-        resid_values = first_residuals.values[:min_len]
+        pred_values: np.ndarray = first_pred["prediction"].values[:min_len]
+        resid_values: np.ndarray = first_residuals.values[:min_len]
 
         ax2.scatter(pred_values, resid_values, color=self.colors.get(first_model.lower(), "#95A5A6"), alpha=0.6, s=30)
         ax2.axhline(y=0, color="red", linestyle="--")
@@ -330,17 +333,17 @@ class ModelVisualizer:
         for model_name in valid_residuals.keys():
             if model_name in merged_data:
                 # Use the dates from merged data to ensure alignment
-                dates = merged_data[model_name]["date"]
-                residuals = valid_residuals[model_name]
+                dates: pd.Series = merged_data[model_name]["date"]
+                residuals: pd.Series = valid_residuals[model_name]
 
                 ax3.plot(dates, residuals, color=self.colors.get(model_name.lower(), "#95A5A6"), label=model_name, alpha=0.7)
             else:
                 # Fallback for backward compatibility
                 residuals = valid_residuals[model_name]
-                pred_df = predictions_dict[model_name]
-                min_len = min(len(pred_df), len(residuals))
+                pred_df: pd.DataFrame = predictions_dict[model_name]
+                min_len: int = min(len(pred_df), len(residuals))
                 dates = pred_df["date"].iloc[:min_len]
-                resid_values = residuals.iloc[:min_len] if hasattr(residuals, "iloc") else residuals[:min_len]
+                resid_values: np.ndarray = residuals.iloc[:min_len] if hasattr(residuals, "iloc") else residuals[:min_len]
 
                 ax3.plot(
                     dates, resid_values, color=self.colors.get(model_name.lower(), "#95A5A6"), label=model_name, alpha=0.7
@@ -415,13 +418,13 @@ class ModelVisualizer:
 
         # Handle single model case
         if n_models == 1:
-            axes = [axes]
+            axes: list[Any] = [axes]
 
         for idx, (model_name, importance_df) in enumerate(feature_importance_dict.items()):
             ax = axes[idx]
 
             # Get top N features
-            top_features = importance_df.nlargest(top_n, "importance")
+            top_features: pd.DataFrame = importance_df.nlargest(top_n, "importance")
 
             # Create horizontal bar chart
             y_pos = np.arange(len(top_features))
@@ -494,10 +497,10 @@ class ModelVisualizer:
         # Iterate over each model and calculate errors
         for model_name, pred_df in predictions_dict.items():
             # Merge predictions with actual data
-            merged = pd.merge(actual_data[["date", target_col]], pred_df[["date", "prediction"]], on="date", how="inner")
+            merged: pd.DataFrame = pd.merge(actual_data[["date", target_col]], pred_df[["date", "prediction"]], on="date", how="inner")
 
             # Calculate absolute errors
-            errors = (merged[target_col] - merged["prediction"]).abs()
+            errors: pd.Series = (merged[target_col] - merged["prediction"]).abs()
 
             # Create histogram
             ax.hist(
@@ -700,14 +703,14 @@ def generate_model_comparison_report(run_id: str, test_data: pd.DataFrame | pl.D
     predictions_dict: dict[str, pd.DataFrame] = {}
     rng = np.random.default_rng()
     for model in metrics_dict.keys():
-        pred_df = test_data[["date"]].copy()
+        pred_df: pd.DataFrame = test_data[["date"]].copy()
         # Add some noise to create different predictions
-        noise = rng.normal(0, 5, len(test_data))
+        noise: np.ndarray = rng.normal(0, 5, len(test_data))
         pred_df["prediction"] = test_data["sales"] + noise
         predictions_dict[model] = pred_df
 
     # Generate visualizations
-    saved_files = visualizer.create_comprehensive_report(metrics_dict, predictions_dict, test_data)
+    saved_files: dict[str, str] = visualizer.create_comprehensive_report(metrics_dict, predictions_dict, test_data)
 
     # Log visualizations to MLflow
     for name, path in saved_files.items():

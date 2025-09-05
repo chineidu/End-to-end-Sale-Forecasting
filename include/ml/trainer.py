@@ -15,7 +15,7 @@ import mlflow
 import numpy as np
 import polars as pl
 import polars.selectors as cs
-import xgboost
+import xgboost as xgb
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
@@ -182,13 +182,13 @@ class ModelTrainer:
         y_test : pl.Series
             Testing target.
         """
-        X_train = train_df.drop([target_col] + excluded_cols)
-        X_val = val_df.drop([target_col] + excluded_cols)
-        X_test = test_df.drop([target_col] + excluded_cols)
+        X_train: pl.DataFrame = train_df.drop([target_col] + excluded_cols)
+        X_val: pl.DataFrame = val_df.drop([target_col] + excluded_cols)
+        X_test: pl.DataFrame = test_df.drop([target_col] + excluded_cols)
 
-        y_train = train_df[target_col]
-        y_val = val_df[target_col]
-        y_test = test_df[target_col]
+        y_train: pl.Series = train_df[target_col]
+        y_val: pl.Series = val_df[target_col]
+        y_test: pl.Series = test_df[target_col]
 
         # Encode categorical features
         # Note: sklearn's LabelEncoder raises on unseen labels. We map unseen labels to -1
@@ -204,8 +204,6 @@ class ModelTrainer:
                 self.label_encoders[var] = le
             else:
                 le = self.label_encoders[var]
-                # Transform training values with existing encoder; unknowns here are unlikely
-                # but map them to -1 defensively
                 try:
                     encoded_train = le.transform(train_values)
                 except ValueError:
@@ -219,11 +217,11 @@ class ModelTrainer:
                 """Encode a list of categorical values using an existing mapping."""
                 return [mapping.get(v, -1) for v in values]
 
-            val_values = X_val[var].to_list()
-            test_values = X_test[var].to_list()
+            val_values: list[Any] = X_val[var].to_list()
+            test_values: list[Any] = X_test[var].to_list()
 
-            encoded_val = _encode_list(val_values)
-            encoded_test = _encode_list(test_values)
+            encoded_val: list[int] = _encode_list(val_values)
+            encoded_test: list[int] = _encode_list(test_values)
 
             # Attach encoded columns back as small-int (Int8). -1 reserved for unknowns.
             X_train = X_train.with_columns(pl.Series(var, values=encoded_train, dtype=pl.Int8))
@@ -272,7 +270,7 @@ class ModelTrainer:
 
     def train_xgboost(
         self, X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray
-    ) -> xgboost.XGBRegressor:  # type: ignore
+    ) -> xgb.XGBRegressor:  # type: ignore
         """
         Train an XGBoost model.
 
@@ -297,7 +295,7 @@ class ModelTrainer:
 
         best_params = self.model_config.xgboost.params
         best_params["early_stopping_rounds"] = 50
-        model = xgboost.XGBRegressor(**best_params)  # type: ignore
+        model = xgb.XGBRegressor(**best_params)  # type: ignore
         model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=True)
 
         self.models["xgboost"] = model
@@ -404,8 +402,10 @@ class ModelTrainer:
                     "n_features": X_train.shape[1],
                 }
             )
-
-            # Train XGBoost
+            
+            # ================================
+            # ======= XGBoost Training =======
+            # ================================
             xgb_model = self.train_xgboost(X_train, y_train, X_val, y_val)
             xgb_pred = xgb_model.predict(X_test)
             xgb_metrics = self.calculate_metrics(y_test, xgb_pred)
@@ -430,6 +430,9 @@ class ModelTrainer:
 
             results["xgboost"] = {"model": xgb_model, "metrics": xgb_metrics, "predictions": xgb_pred}
 
+            # ================================
+            # ======= LightGBM Training =========
+            # ================================
             try:
                 lgb_model = self.train_lightgbm(X_train, y_train, X_val, y_val)
                 lgb_pred = lgb_model.predict(X_test)
@@ -457,6 +460,9 @@ class ModelTrainer:
                 # Log exception with stack trace so we can diagnose why LightGBM failed
                 logger.exception(f"Skipping LightGBM due to error: {lgb_err}")
 
+            # ================================
+            # ====== Ensemble Training =======
+            # ================================
             # Weighted ensemble based on individual model performance (using validation R2)
             # Ensemble: if LightGBM is present, use weighted; otherwise fall back to XGBoost only
             xgb_val_pred = xgb_model.predict(X_val)
@@ -729,7 +735,7 @@ class ModelTrainer:
         Also logs the artifacts to MLflow.
         """
         os.makedirs(f"{PACKAGE_PATH}/artifacts", exist_ok=True)
-        
+
         joblib.dump(self.scalers, f"{PACKAGE_PATH}/artifacts/scalers.pkl")
         joblib.dump(self.label_encoders, f"{PACKAGE_PATH}/artifacts/encoders.pkl")
         joblib.dump(self.feature_cols, f"{PACKAGE_PATH}/artifacts/feature_cols.pkl")

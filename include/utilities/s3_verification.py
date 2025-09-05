@@ -70,9 +70,6 @@ def verify_s3_artifacts(run_id: str, expected_artifacts: list[str] | None = None
         bucket = parts[0]
         prefix = parts[1] if len(parts) > 1 else ""
 
-        # Create S3 client - use environment variables for consistency
-        import os
-
         # Ensure environment variables are set 
         setup_env()
         s3_client = boto3.client(
