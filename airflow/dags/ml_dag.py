@@ -514,7 +514,7 @@ def sales_forecast_training() -> None:
         echo "Cleaning up temporary files..."
         rm -rf /tmp/sales_data /tmp/performance_report.json || true
         """,
-        trigger_rule="all_done",
+        trigger_rule="all_done", # Run regardless of upstream success/failure
     )
 
     # Task dependencies using operator chaining
