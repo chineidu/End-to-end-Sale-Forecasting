@@ -24,7 +24,7 @@ It leverages Apache Airflow for orchestration, MLflow for experiment tracking, a
 
 The solution is containerized using Docker and orchestrated with Docker Compose.
 
-![Architecture Diagram](static/Architecture_1.png)
+![Architecture Diagram](static/ML%20Workflow.png)
 
 ## Goals
 
