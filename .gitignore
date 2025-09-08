@@ -219,5 +219,5 @@ __marimo__/
 **/**/data/*
 **/**/artifacts/*
 **/**/logs/*
-
+**/**/.DS_Store
 
