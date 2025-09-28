@@ -580,74 +580,105 @@ class ModelVisualizer:
 
         # Calculate ranks for each metric (1 = best)
         ranking_scores = {}
+
         for model in models:
-            score = 0
-            for metric in ["rmse", "mae", "mape"]:  # Lower is better
+            total_rank = 0
+
+            # For metrics where lower is better (RMSE, MAE, MAPE)
+            for metric in ["rmse", "mae", "mape"]:
                 values = [metrics_dict[m].get(metric, float("inf")) for m in models]
-                rank = sorted(values).index(metrics_dict[model].get(metric, float("inf"))) + 1
-                score += rank
+                # Sort values in ascending order (lowest first = best)
+                sorted_values = sorted(values)
+                model_value = metrics_dict[model].get(metric, float("inf"))
+                rank = sorted_values.index(model_value) + 1
+                total_rank += rank
 
-            # R² - higher is better
+            # For R² - higher is better
             r2_values = [metrics_dict[m].get("r2", -float("inf")) for m in models]
-            r2_rank = len(models) - sorted(r2_values).index(metrics_dict[model].get("r2", -float("inf")))
-            score += r2_rank
+            r2_sorted_desc = sorted(r2_values, reverse=True)  # Highest first = best
+            model_r2 = metrics_dict[model].get("r2", -float("inf"))
+            r2_rank = r2_sorted_desc.index(model_r2) + 1
+            total_rank += r2_rank
 
-            ranking_scores[model] = score / 4  # Average rank
+            # Average rank across all 4 metrics
+            avg_rank = total_rank / 4
+            ranking_scores[model] = avg_rank
 
-        # Sort by ranking score
+        # Sort by ranking score (lowest average rank = best)
         sorted_models = sorted(ranking_scores.items(), key=lambda x: x[1])
 
         models_sorted = [x[0] for x in sorted_models]
         scores_sorted = [x[1] for x in sorted_models]
         colors = [self.colors.get(model.lower(), "#95A5A6") for model in models_sorted]
 
-        bars = ax.barh(range(len(models_sorted)), scores_sorted, color=colors, alpha=0.7)
+        # Create horizontal bar chart
+        y_pos = range(len(models_sorted))
+        bars = ax.barh(y_pos, scores_sorted, color=colors, alpha=0.7)
 
         # Add score labels
-        for i, (bar, score) in enumerate(zip(bars, scores_sorted)):
-            ax.text(bar.get_width() + 0.1, bar.get_y() + bar.get_height() / 2, f"{score:.2f}", va="center", fontsize=10)
+        for bar, score in zip(bars, scores_sorted):
+            ax.text(bar.get_width() + 0.05, bar.get_y() + bar.get_height() / 2, f"{score:.2f}", va="center", fontsize=10)
 
-        ax.set_yticks(range(len(models_sorted)))
+        # Set up the chart
+        ax.set_yticks(y_pos)
         ax.set_yticklabels(models_sorted)
         ax.set_xlabel("Average Rank")
         ax.set_title("Overall Model Ranking\n(Lower is Better)")
         ax.grid(True, alpha=0.3, axis="x")
-        ax.invert_yaxis()
+        ax.invert_yaxis()  # Best model (lowest rank) at top
+
+        # Set reasonable x-axis limits
+        ax.set_xlim(0, max(scores_sorted) * 1.3)
 
     def _create_normalized_performance_comparison(self, metrics_dict: dict[str, dict[str, float]], ax: plt.Axes) -> None:
         """Create normalized performance comparison."""
         models = list(metrics_dict.keys())
         metrics = ["rmse", "mae", "mape", "r2"]
 
-        # Normalize metrics (0-1 scale)
+        # Normalize metrics (0.1-1 scale to ensure visibility)
         normalized_data = {}
         for metric in metrics:
             values = [metrics_dict[model].get(metric, 0) for model in models]
             if metric == "r2":  # Higher is better
                 min_val, max_val = min(values), max(values)
-                normalized_values = [(v - min_val) / (max_val - min_val) if max_val != min_val else 0.5 for v in values]
+                if max_val != min_val:
+                    normalized_values = [0.1 + 0.9 * (v - min_val) / (max_val - min_val) for v in values]
+                else:
+                    normalized_values = [0.55] * len(values)  # All same, use middle value
             else:  # Lower is better - invert
                 min_val, max_val = min(values), max(values)
-                normalized_values = [1 - (v - min_val) / (max_val - min_val) if max_val != min_val else 0.5 for v in values]
+                if max_val != min_val:
+                    normalized_values = [0.1 + 0.9 * (1 - (v - min_val) / (max_val - min_val)) for v in values]
+                else:
+                    normalized_values = [0.55] * len(values)  # All same, use middle value
 
             normalized_data[metric] = normalized_values
 
         # Create grouped bar chart
         x = np.arange(len(models))
-        width = 0.2
+        width = 0.18  # Slightly narrower bars to prevent overlap
+
+        colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]  # Different colors for each metric
 
         for i, metric in enumerate(metrics):
             offset = (i - 1.5) * width
-            bars = ax.bar(x + offset, normalized_data[metric], width, label=metric.upper(), alpha=0.8)
+            bars = ax.bar(x + offset, normalized_data[metric], width, label=metric.upper(), alpha=0.8, color=colors[i])
+
+            # Add value labels on bars
+            for _, (bar, value) in enumerate(zip(bars, normalized_data[metric])):
+                if value > 0.15:  # Only show label if bar is tall enough
+                    ax.text(
+                        bar.get_x() + bar.get_width() / 2, value + 0.02, f"{value:.2f}", ha="center", va="bottom", fontsize=8
+                    )
 
         ax.set_xlabel("Models")
-        ax.set_ylabel("Normalized Performance (0-1, Higher is Better)")
+        ax.set_ylabel("Normalized Performance (0.1-1, Higher is Better)")
         ax.set_title("Normalized Performance Comparison")
         ax.set_xticks(x)
-        ax.set_xticklabels(models)
+        ax.set_xticklabels(models, rotation=0)  # Ensure labels are readable
         ax.legend()
         ax.grid(True, alpha=0.3, axis="y")
-        ax.set_ylim(0, 1.1)
+        ax.set_ylim(0, 1.15)  # More space for labels
 
     def _create_feature_consistency_plot(
         self, feature_importance_dict: dict[str, pd.DataFrame], ax: plt.Axes, top_n: int
@@ -662,7 +693,7 @@ class ModelVisualizer:
         feature_counts = {}
         for feature in all_features:
             count = 0
-            for model_name, df in feature_importance_dict.items():
+            for df in feature_importance_dict.values():
                 top_features = df.nlargest(top_n, "importance")["feature"].tolist()
                 if feature in top_features:
                     count += 1
@@ -673,7 +704,7 @@ class ModelVisualizer:
             features = list(feature_counts.keys())
             counts = list(feature_counts.values())
 
-            bars = ax.barh(range(len(features)), counts, color="#4A90E2", alpha=0.7)
+            _ = ax.barh(range(len(features)), counts, color="#4A90E2", alpha=0.7)
 
             ax.set_yticks(range(len(features)))
             ax.set_yticklabels(features, fontsize=9)
@@ -745,7 +776,7 @@ class ModelVisualizer:
         bars = ax.barh(range(len(models_sorted)), scores_sorted, color=colors, alpha=0.7)
 
         # Add score labels
-        for i, (bar, score) in enumerate(zip(bars, scores_sorted)):
+        for _, (bar, score) in enumerate(zip(bars, scores_sorted)):
             ax.text(
                 bar.get_width() + max(scores_sorted) * 0.01,
                 bar.get_y() + bar.get_height() / 2,
