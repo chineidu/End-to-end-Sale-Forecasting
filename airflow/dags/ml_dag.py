@@ -20,9 +20,9 @@ from airflow.providers.standard.operators.bash import BashOperator
 from airflow.sdk import Asset, Param
 
 # Define Assets for data lineage and dependency management
-SALES_DATA_ASSET = Asset("s3://sales-data/raw/")
-MODEL_REGISTRY_ASSET = Asset("s3://models/sales-forecasting/")
-PERFORMANCE_REPORT_ASSET = Asset("s3://reports/sales-forecasting/")
+# Note: These assets should reflect actual data locations in your system
+MODEL_REGISTRY_ASSET = Asset("file://artifacts/models/")
+PERFORMANCE_REPORT_ASSET = Asset("file://artifacts/reports/")
 TRAINING_DATA_ASSET = Asset("file://data/training/sales/")
 
 default_args = {
@@ -61,7 +61,6 @@ def sales_forecast_training() -> None:
     """DAG to train sales forecasting models using realistic sales data."""
 
     @task(
-        inlets=[SALES_DATA_ASSET],
         outlets=[TRAINING_DATA_ASSET],
         multiple_outputs=True,
         retries=2,
@@ -514,7 +513,7 @@ def sales_forecast_training() -> None:
         echo "Cleaning up temporary files..."
         rm -rf /tmp/sales_data /tmp/performance_report.json || true
         """,
-        trigger_rule="all_done", # Run regardless of upstream success/failure
+        trigger_rule="all_done",  # Run regardless of upstream success/failure
     )
 
     # Task dependencies using operator chaining
