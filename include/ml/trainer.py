@@ -7,7 +7,7 @@ import json
 import os
 import tempfile
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 import joblib
 import lightgbm as lgb
@@ -23,7 +23,7 @@ from include import PACKAGE_PATH, create_logger
 from include.config import app_config
 from include.ml.diagnostics import diagnose_model_performance
 from include.ml.ensemble_model import EnsembleModel
-from include.ml.visualization import ModelVisualizer
+from include.ml.visualization import ModelVisualizerMatMatplotlib, ModelVisualizerPlotly
 from include.utilities.feature_engineering import FeatureEngineer
 from include.utilities.mlflow_s3_utils import MLflowS3Manager
 from include.utilities.mlflow_utils import MLflowManager
@@ -568,11 +568,14 @@ class ModelTrainer:
 
         return results
 
-    def _generate_and_log_visualizations(self, results: dict[str, Any], test_df: pl.DataFrame) -> None:
+    def _generate_and_log_visualizations(self, results: dict[str, Any], test_df: pl.DataFrame, viz_backend: Literal["matplotlib", "plotly"] = "matplotlib") -> None:
         """Generate and log model comparison visualizations to MLflow"""
         try:
             logger.info("Starting visualization generation...")
-            visualizer = ModelVisualizer()
+            if viz_backend == "plotly":
+                visualizer = ModelVisualizerPlotly()
+            else:
+                visualizer = ModelVisualizerMatMatplotlib()
 
             # Extract metrics
             metrics_dict: dict[str, Any] = {}
